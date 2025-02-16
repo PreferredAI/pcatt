@@ -859,7 +859,9 @@ class GreedTok(PreTrainedTokenizer):
         """
         if not isinstance(text, str):
             raise TypeError("text is not a string.")
-        encoding = self.encode(text)
+        encoding = self.encode(
+            text, pair, add_special_tokens=add_special_tokens, **kwargs
+        )
         if add_special_tokens:
             return [self.final_tokens_map[e] for e in encoding]
         else:
@@ -920,6 +922,7 @@ class GreedTok(PreTrainedTokenizer):
             return_special_tokens_mask=False,
             return_token_type_ids=False,
             return_tensors=return_tensors,
+            **kwargs,
         )
 
         if add_special_tokens:
@@ -1101,18 +1104,18 @@ class GreedTok(PreTrainedTokenizer):
                 "or `List[List[str]]` (batch of pretokenized examples)."
             )
 
-        # if is_split_into_words:
-        #     is_batched = (
-        #         isinstance(text, (list, tuple))
-        #         and text
-        #         and isinstance(text[0], (list, tuple))
-        #     )
-        # else:
-        #     is_batched = isinstance(text, (list, tuple))
+        if is_split_into_words:
+            is_batched = (
+                isinstance(text, (list, tuple))
+                and text
+                and isinstance(text[0], (list, tuple))
+            )
+        else:
+            is_batched = isinstance(text, (list, tuple))
 
-        # if not is_batched:
-        #     text = [text]
-        #     text_pair = [text_pair]
+        if not is_batched:
+            text = [text]
+            text_pair = [text_pair] if text_pair != None else None
 
         if isinstance(text_pair, str):
             raise TypeError(
@@ -1139,6 +1142,13 @@ class GreedTok(PreTrainedTokenizer):
 
         if text_pair:
             # account for text pairs
+            callback = kwargs.get(
+                "callback",
+                lambda x1, x2: (
+                    [*x1, self.final_tokens_map[b" "], *x2],
+                    [0] * len(x1) + [1] * (len(x2) + 1),
+                ),
+            )
             if is_split_into_words:
                 encoded_inputs = self.encoder.batch_encode_pairs_presplit(
                     texts=text,
@@ -1149,7 +1159,8 @@ class GreedTok(PreTrainedTokenizer):
                     ),
                     return_token_type_ids=if_none_convert(return_token_type_ids, False),
                     stride=stride,
-                    f=lambda x1, x2: [*x1, *x2],
+                    # f=lambda x1, x2: [*x1, *[self.final_tokens_map[b" "]], *x2]
+                    f=callback,
                 )
             else:
                 encoded_inputs = self.encoder.batch_encode_pairs(
@@ -1161,9 +1172,11 @@ class GreedTok(PreTrainedTokenizer):
                     ),
                     return_token_type_ids=if_none_convert(return_token_type_ids, False),
                     stride=stride,
-                    f=lambda x1, x2: [*x1, *x2],
+                    # f=lambda x1, x2: [*x1, *[self.final_tokens_map[b" "]], *x2]
+                    f=callback,
                 )
         else:
+            callback = kwargs.get("callback", lambda x: x)
             if is_split_into_words:
                 encoded_inputs = self.encoder.batch_encode_presplit(
                     texts=text,
@@ -1175,7 +1188,7 @@ class GreedTok(PreTrainedTokenizer):
                         return_special_tokens_mask, False
                     ),
                     stride=stride,
-                    f=lambda x: x,
+                    f=callback,
                 )
             else:
                 encoded_inputs = self.encoder.batch_encode(
@@ -1188,7 +1201,7 @@ class GreedTok(PreTrainedTokenizer):
                         return_special_tokens_mask, False
                     ),
                     stride=stride,
-                    f=lambda x: x,
+                    f=callback,
                 )
 
         batch_outputs = BatchEncoding(
@@ -1638,7 +1651,7 @@ class GreedTok(PreTrainedTokenizer):
         special_tokens_map = {} if special_tokens_map == None else special_tokens_map
         pool = multiprocessing.Pool(kwargs.get("workers", 8))
         for b in text_iterator:
-            if not isinstance(b[0], list):  # splitting required
+            if isinstance(b[0], str):  # splitting required
                 # done in python because std::regex does not support pcre2 expressions such as \p{L}
                 self.tokenizer.build_counter_from_text(
                     pool.map(partial(_splitter, pat=pattern), b)

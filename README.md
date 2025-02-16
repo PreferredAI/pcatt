@@ -6,8 +6,8 @@ Our formulation naturally relaxes to the well-studied weighted maximum coverage 
 
 Install the beta version (for transformers >= 4):
 ```
-wget "https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14-beta3.zip"
-unzip v0.14-beta3.zip -d pcatt
+wget "https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14-beta4.zip"
+unzip v0.14-beta4.zip -d pcatt
 cd pcatt
 pip install -r requirements.txt
 pip install transformers

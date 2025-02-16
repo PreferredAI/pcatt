@@ -646,7 +646,7 @@ public:
     {
         vector<unsigned int> v(encoding.begin(), encoding.end());
         v.insert(v.end(), encoding_pair.begin(), encoding_pair.end());
-
+        v.emplace_back(rules_cache[" "]);
         vector<unsigned int> token_type(encoding.size(), 0);
         token_type.insert(token_type.end(), encoding_pair.size(), 1);
         return pair(v, token_type);
@@ -782,7 +782,7 @@ public:
         vector<vector<unsigned int>> &encodings,
         vector<vector<unsigned int>> &encoding_pairs,
         bool return_token_type_ids,
-        std::function<pair<vector<unsigned int>, vector<unsigned int>>(vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)> f = NULL)
+        function<pair<vector<unsigned int>, vector<unsigned int>>(vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)> f = NULL)
     {
         results->emplace(
             "input_ids",
@@ -795,41 +795,30 @@ public:
         }
         if (f == NULL)
         {
-            tbb::parallel_for(
-                tbb::blocked_range<int unsigned>(0, encodings.size()),
-                [&](tbb::blocked_range<int unsigned> r)
+            for (unsigned int i = 0; i < encodings.size(); ++i)
+            {
+
+                pair<vector<unsigned int>, vector<unsigned int>> temp = basic_callback_pair(
+                    encodings.at(i),
+                    encoding_pairs.at(i));
+                results->at("input_ids").at(i) = temp.first;
+                if (return_token_type_ids)
                 {
-                    for (int unsigned i = r.begin(); i < r.end(); ++i)
-                    {
-                        pair<vector<unsigned int>, vector<unsigned int>> temp = basic_callback_pair(
-                            encodings.at(i),
-                            encoding_pairs.at(i));
-                        results->at("input_ids").at(i) = temp.first;
-                        if (return_token_type_ids)
-                        {
-                            results->at("token_type_ids").at(i) = temp.second;
-                        }
-                    }
-                });
+                    results->at("token_type_ids").at(i) = temp.second;
+                }
+            }
         }
         else
         {
-            tbb::parallel_for(
-                tbb::blocked_range<int unsigned>(0, encodings.size()),
-                [&](tbb::blocked_range<int unsigned> r)
+            for (unsigned int i = 0; i < encodings.size(); ++i)
+            {
+                pair<vector<unsigned int>, vector<unsigned int>> temp = f(encodings.at(i), encoding_pairs.at(i));
+                results->at("input_ids").at(i) = temp.first;
+                if (return_token_type_ids)
                 {
-                    for (int unsigned i = r.begin(); i < r.end(); ++i)
-                    {
-                        pair<vector<unsigned int>, vector<unsigned int>> temp = f(
-                            encodings.at(i),
-                            encoding_pairs.at(i));
-                        results->at("input_ids").at(i) = temp.first;
-                        if (return_token_type_ids)
-                        {
-                            results->at("token_type_ids").at(i) = temp.second;
-                        }
-                    }
-                });
+                    results->at("token_type_ids").at(i) = temp.second;
+                }
+            }
         }
     }
 
@@ -926,7 +915,7 @@ public:
         vector<vector<unsigned int>> encodings = batch_tokenize_whole(texts);
         vector<vector<unsigned int>> encoding_pairs = batch_tokenize_whole(text_pairs);
 
-        truncate_pairs(&results, encodings, encoding_pairs, return_token_type_ids);
+        truncate_pairs(&results, encodings, encoding_pairs, return_token_type_ids, f);
 
         build_masks(
             &results,
@@ -952,7 +941,7 @@ public:
         vector<vector<unsigned int>> encodings = batch_tokenize_presplit(texts);
         vector<vector<unsigned int>> encoding_pairs = batch_tokenize_presplit(text_pairs);
 
-        truncate_pairs(&results, encodings, encoding_pairs, return_token_type_ids);
+        truncate_pairs(&results, encodings, encoding_pairs, return_token_type_ids, f);
 
         build_masks(
             &results,
@@ -1140,31 +1129,31 @@ PYBIND11_MODULE(greedy_encoder, var)
              py::arg("return_attention_mask"),
              py::arg("return_overflowing_tokens"),
              py::arg("return_special_tokens_mask"),
-             py::arg("stride") = 0,
-             py::arg("f") = NULL)
+             py::arg("stride"),
+             py::arg("f"))
         .def("batch_encode_pairs", &GreedyTokenizer::batch_encode_pairs,
              py::arg("texts"),
              py::arg("text_pairs"),
              py::arg("return_attention_mask"),
              py::arg("return_special_tokens_mask"),
              py::arg("return_token_type_ids"),
-             py::arg("stride") = 0,
-             py::arg("f") = NULL)
+             py::arg("stride"),
+             py::arg("f"))
         .def("batch_encode_presplit", &GreedyTokenizer::batch_encode_presplit,
              py::arg("texts"),
              py::arg("return_attention_mask"),
              py::arg("return_overflowing_tokens"),
              py::arg("return_special_tokens_mask"),
-             py::arg("stride") = 0,
-             py::arg("f") = NULL)
+             py::arg("stride"),
+             py::arg("f"))
         .def("batch_encode_pairs_presplit", &GreedyTokenizer::batch_encode_pairs_presplit,
              py::arg("texts"),
              py::arg("text_pairs"),
              py::arg("return_attention_mask"),
              py::arg("return_special_tokens_mask"),
              py::arg("return_token_type_ids"),
-             py::arg("stride") = 0,
-             py::arg("f") = NULL)
+             py::arg("stride"),
+             py::arg("f"))
         .def("batch_tokenize_presplit", &GreedyTokenizer::batch_tokenize_presplit)
         .def("batch_tokenize_whole", &GreedyTokenizer::batch_tokenize_whole)
         .def("batch_split_and_tokenize", &GreedyTokenizer::batch_split_and_tokenize)
