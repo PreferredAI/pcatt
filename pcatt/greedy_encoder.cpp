@@ -827,7 +827,7 @@ public:
         vector<vector<unsigned int>> &encodings,
         vector<vector<unsigned int>> &encoding_pairs,
         bool return_token_type_ids,
-        std::function<pair<vector<unsigned int>, vector<unsigned int>>(vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)> f = NULL)
+        function<pair<vector<unsigned int>, vector<unsigned int>>(vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)> f = NULL)
     {
         // for pairs, four possible strategies
         if (_truncation_strategy != TruncationStrategy::DO_NOT_TRUNCATE)
@@ -909,7 +909,7 @@ public:
         bool return_special_tokens_mask,
         bool return_token_type_ids,
         unsigned int stride = 0,
-        std::function<pair<vector<unsigned int>, vector<unsigned int>>(vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)> f = NULL)
+        function<pair<vector<unsigned int>, vector<unsigned int>>(vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)> f = NULL)
     {
         unordered_map<string, vector<vector<unsigned int>>> results;
         vector<vector<unsigned int>> encodings = batch_tokenize_whole(texts);
@@ -935,7 +935,7 @@ public:
         bool return_special_tokens_mask,
         bool return_token_type_ids,
         unsigned int stride = 0,
-        std::function<pair<vector<unsigned int>, vector<unsigned int>>(vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)> f = NULL)
+        function<pair<vector<unsigned int>, vector<unsigned int>>(vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)> f = NULL)
     {
         unordered_map<string, vector<vector<unsigned int>>> results;
         vector<vector<unsigned int>> encodings = batch_tokenize_presplit(texts);
@@ -956,7 +956,7 @@ public:
     void batch_transform(
         unordered_map<string, vector<vector<unsigned int>>> *results,
         vector<vector<unsigned int>> &encodings,
-        std::function<vector<unsigned int>(vector<unsigned int> &encoding)> f = NULL)
+        function<vector<unsigned int>(vector<unsigned int> &encoding)> f = NULL)
     {
         if (f != NULL)
         {
@@ -979,7 +979,7 @@ public:
         vector<vector<unsigned int>> &encodings,
         unsigned int stride,
         bool return_overflowing_tokens,
-        const std::function<vector<unsigned int>(vector<unsigned int> &encodings)> f = NULL)
+        const function<vector<unsigned int>(vector<unsigned int> &encodings)> f = NULL)
     {
         if (_truncation_strategy != TruncationStrategy::DO_NOT_TRUNCATE)
         {
@@ -1034,7 +1034,7 @@ public:
         bool return_overflowing_tokens,
         bool return_special_tokens_mask,
         unsigned int stride = 0,
-        const std::function<vector<unsigned int>(vector<unsigned int> &encodings)> f = NULL)
+        const function<vector<unsigned int>(vector<unsigned int> &encodings)> f = NULL)
     {
         vector<vector<unsigned int>> encodings = batch_tokenize_whole(texts);
         unordered_map<string, vector<vector<unsigned int>>> results;
@@ -1060,7 +1060,7 @@ public:
         bool return_overflowing_tokens,
         bool return_special_tokens_mask,
         unsigned int stride = 0,
-        const std::function<vector<unsigned int>(vector<unsigned int> &encodings)> f = NULL)
+        const function<vector<unsigned int>(vector<unsigned int> &encodings)> f = NULL)
     {
         vector<vector<unsigned int>> encodings = batch_tokenize_presplit(texts);
         unordered_map<string, vector<vector<unsigned int>>> results;
