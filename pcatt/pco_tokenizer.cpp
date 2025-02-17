@@ -75,9 +75,9 @@ public:
     vector<int unsigned> D_arr;
     vector<long unsigned> scores;
     unordered_set<string> shortlist;
-    unordered_set<string> candidate_tokens;
+    unordered_set<string> candidate_tokens{};
     unordered_map<string, long unsigned> results;
-    unordered_map<string, long unsigned> word_counts;
+    unordered_map<string, long unsigned> word_counts{};
     unordered_map<long unsigned, string> index_to_word;
     unordered_map<long unsigned, long unsigned> id_to_count;
     unordered_map<string, unordered_set<string>> word_to_substring;
@@ -91,10 +91,11 @@ public:
      * @param candidate_tokens to investigate
      */
     GreedyPCOTokenizer(
-        unordered_map<string, long unsigned> word_counts = {},
-        unordered_set<string> candidate_tokens = {})
-        : candidate_tokens(candidate_tokens), word_counts(word_counts)
+        unordered_map<string, long unsigned> _word_counts = {},
+        unordered_set<string> _candidate_tokens = {})
     {
+        word_counts = _word_counts;
+        candidate_tokens = _candidate_tokens;
     }
 
     virtual ~GreedyPCOTokenizer() {}
@@ -124,9 +125,14 @@ public:
                     a.release();
                 }
             });
+
         for (const auto &item : async_counter)
         {
-            word_counts.emplace(item.first, item.second);
+            if (word_counts.find(item.first) == word_counts.end())
+            {
+                word_counts[item.first] = 0;
+            }
+            word_counts[item.first] += item.second;
         }
     }
 
@@ -149,9 +155,10 @@ public:
         auto start = chrono::high_resolution_clock::now();
         long unsigned next_id = 0;
         long unsigned end_id = 0;
-
+        vector<pair<string, long unsigned>> wc{};
+        wc.reserve(word_counts.size());
         /* Initialize array positions */
-        for (const auto &item : word_counts)
+        for (auto &item : word_counts)
         {
             if (item.second < min_word_count)
             {
@@ -428,7 +435,7 @@ public:
         {
             auto start = chrono::high_resolution_clock::now();
 
-            vector<string> items(shortlist.begin(), shortlist.end());
+            vector<string> items(shortlist.cbegin(), shortlist.cend());
             tbb::parallel_for(
                 tbb::blocked_range<long unsigned>(0, items.size()),
                 [&](tbb::blocked_range<long unsigned> r)
