@@ -158,7 +158,7 @@ public:
         vector<pair<string, long unsigned>> wc{};
         wc.reserve(word_counts.size());
         /* Initialize array positions */
-        for (auto &item : word_counts)
+        for (const auto &item : word_counts)
         {
             if (item.second < min_word_count)
             {
@@ -166,37 +166,74 @@ public:
             }
 
             singleton_count += item.first.size();
-
             end_id = next_id + item.first.size();
             id_to_count[next_id] = item.second;
 
             word_to_index[item.first] = pair(next_id, end_id);
-            word_to_substring[item.first] = unordered_set<string>();
-
-            for (unsigned int i = 0; i < item.first.size(); ++i)
-            {
-
-                for (unsigned int j = i + 2; j < min(max_token_length + i, item.first.size() + 1); ++j)
-                {
-                    string substr = item.first.substr(i, j - i);
-                    if (substr.size() <= 1)
-                    {
-                        continue;
-                    }
-                    if (candidate_tokens.size() > 0 && candidate_tokens.find(substr) == candidate_tokens.end())
-                    {
-                        continue;
-                    }
-                    if (substring_to_index.find(substr) == substring_to_index.end())
-                    {
-                        substring_to_index[substr] = vector<SubstringPos>();
-                    }
-                    substring_to_index[substr].push_back({next_id, end_id, i, j});
-                    word_to_substring[item.first].insert(substr);
-                }
-            }
+            wc.emplace_back(pair(item.first, item.second));
             next_id = end_id;
         }
+
+        tbb::concurrent_hash_map<string, vector<SubstringPos>> substring_to_index_collector;
+        tbb::concurrent_hash_map<string, unordered_set<string>> word_to_substring_collector;
+        tbb::parallel_for(
+            tbb::blocked_range<long unsigned>(0, wc.size()),
+            [&](tbb::blocked_range<long unsigned> r)
+            {
+                tbb::concurrent_hash_map<string, vector<SubstringPos>>::accessor a;
+                tbb::concurrent_hash_map<string, unordered_set<string>>::accessor b;
+                for (long unsigned i = r.begin(); i < r.end(); ++i)
+                {
+                    const string word = wc.at(i).first;
+                    const auto idx = word_to_index[word];
+                    const unsigned long start = idx.first;
+                    const unsigned long end = idx.second;
+                    const unsigned long size = word.size();
+                    unordered_map<string, vector<SubstringPos>> substring_to_index_helper;
+                    substring_to_index_helper.reserve(size * size);
+
+                    for (unsigned int i = 0; i < size; ++i)
+                    {
+                        for (unsigned int j = i + 2; j < min(max_token_length + i, size + 1); ++j)
+                        {
+                            string substr = word.substr(i, j - i);
+                            if (substr.size() <= 1)
+                            {
+                                continue;
+                            }
+                            if (candidate_tokens.size() > 0 && candidate_tokens.find(substr) == candidate_tokens.end())
+                            {
+                                continue;
+                            }
+                            if (substring_to_index_helper.find(substr) == substring_to_index_helper.end())
+                            {
+                                substring_to_index_helper[substr] = vector<SubstringPos>();
+                            }
+                            substring_to_index_helper[substr].push_back({start, end, i, j});
+                        }
+                    }
+                    unordered_set<string> substr_set;
+                    substr_set.reserve(substring_to_index_helper.size());
+                    for (const auto &pair : substring_to_index_helper)
+                    {
+                        substring_to_index_collector.insert(a, pair.first);
+                        a->second.insert(a->second.begin(), pair.second.begin(), pair.second.end());
+                        a.release();
+                        substr_set.emplace(pair.first);
+                    }
+                    word_to_substring_collector.insert(b, word);
+                    b->second = substr_set;
+                    b.release();
+                }
+            });
+
+        substring_to_index.insert(
+            substring_to_index_collector.cbegin(),
+            substring_to_index_collector.cend());
+
+        word_to_substring.insert(
+            word_to_substring_collector.cbegin(),
+            word_to_substring_collector.cend());
 
         for (const auto &kv : word_to_index)
         {
