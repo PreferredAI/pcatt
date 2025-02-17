@@ -70,19 +70,19 @@ public:
     }
 
     long unsigned singleton_count = 0;
-    unordered_map<string, long unsigned> word_counts;
-    unordered_set<string> candidate_tokens;
     vector<string> ranks;
-    vector<long unsigned> scores;
-    unordered_set<string> shortlist;
-    unordered_map<long unsigned, long unsigned> id_to_count;
-    unordered_map<string, pair<long unsigned, long unsigned>> word_to_index;
-    unordered_map<long unsigned, string> index_to_word;
-    unordered_map<string, vector<SubstringPos>> substring_to_index;
-    unordered_map<string, unordered_set<string>> word_to_substring;
     vector<int unsigned> T_arr;
     vector<int unsigned> D_arr;
+    vector<long unsigned> scores;
+    unordered_set<string> shortlist;
+    unordered_set<string> candidate_tokens;
     unordered_map<string, long unsigned> results;
+    unordered_map<string, long unsigned> word_counts;
+    unordered_map<long unsigned, string> index_to_word;
+    unordered_map<long unsigned, long unsigned> id_to_count;
+    unordered_map<string, unordered_set<string>> word_to_substring;
+    unordered_map<string, vector<SubstringPos>> substring_to_index;
+    unordered_map<string, pair<long unsigned, long unsigned>> word_to_index;
 
     /**
      * @brief Construct a new Greedy P C O Tokenizer object
@@ -93,7 +93,7 @@ public:
     GreedyPCOTokenizer(
         unordered_map<string, long unsigned> word_counts = {},
         unordered_set<string> candidate_tokens = {})
-        : word_counts(word_counts), candidate_tokens(candidate_tokens)
+        : candidate_tokens(candidate_tokens), word_counts(word_counts)
     {
     }
 
@@ -110,21 +110,21 @@ public:
                 unordered_map<string, unsigned long> temp_counter;
                 for (long unsigned i = r.begin(); i < r.end(); ++i)
                 {
-                    for (string w : texts.at(i))
+                    for (const string &w : texts.at(i))
                     {
                         auto p = temp_counter.try_emplace(w, 0);
                         p.first->second += 1;
                     }
                 }
                 tbb::concurrent_hash_map<string, unsigned long>::accessor a;
-                for (auto &item : temp_counter)
+                for (const auto &item : temp_counter)
                 {
                     async_counter.insert(a, item.first);
                     a->second += item.second;
                     a.release();
                 }
             });
-        for (auto item : async_counter)
+        for (const auto &item : async_counter)
         {
             word_counts.emplace(item.first, item.second);
         }
@@ -134,8 +134,8 @@ public:
      * @brief Create a bipartite graph representation and allocate spaces for tracking arrays
      */
     void initialize_graph(
-        size_t max_token_length = UINT8_MAX,
-        unsigned int min_word_count = 1)
+        const size_t max_token_length = UINT8_MAX,
+        const unsigned int min_word_count = 1)
     {
         cout << "Word counts size: " << word_counts.size() << endl;
         cout << "Token set size: " << candidate_tokens.size() << endl;
@@ -151,7 +151,7 @@ public:
         long unsigned end_id = 0;
 
         /* Initialize array positions */
-        for (auto &item : word_counts)
+        for (const auto &item : word_counts)
         {
             if (item.second < min_word_count)
             {
@@ -191,7 +191,7 @@ public:
             next_id = end_id;
         }
 
-        for (auto &kv : word_to_index)
+        for (const auto &kv : word_to_index)
         {
             index_to_word[kv.second.first] = kv.first;
         }
@@ -254,7 +254,7 @@ public:
         long unsigned counts = 0;
 
         unordered_map<long unsigned, vector<SubstringPos>> pplaces;
-        for (auto p : places)
+        for (const auto &p : places)
         {
             if (pplaces.find(p.arr_start) == pplaces.end())
             {
@@ -263,13 +263,12 @@ public:
             pplaces[p.arr_start].emplace_back(p);
         }
 
-        for (auto pp : pplaces)
+        for (auto &pp : pplaces)
         {
             long unsigned prev_end = 0;
-            sort( // execution::par,
-                pp.second.begin(), pp.second.end(), &substring_pos_sorter);
+            sort(pp.second.begin(), pp.second.end(), &substring_pos_sorter);
 
-            for (auto &p : pp.second)
+            for (const auto &p : pp.second)
             {
 
                 const long unsigned ws = p.arr_start;
@@ -327,7 +326,7 @@ public:
         unordered_set<long unsigned> visited;
         long unsigned prev_w_start = -1;
         int d_counter = 0;
-        for (auto &p : items)
+        for (const auto &p : items)
         {
             const long unsigned ws = p.arr_start;
             const long unsigned we = p.arr_end;
@@ -366,7 +365,7 @@ public:
     {
         vector<py::bytes> pybytes_ranks(0);
         pybytes_ranks.reserve(ranks.size());
-        for (auto &r : ranks)
+        for (const auto &r : ranks)
         {
             pybytes_ranks.emplace_back(r);
         }
@@ -379,9 +378,9 @@ public:
      * @param tokens the order of tokens to be used
      * @return pair<vector<string>, vector<long unsigned>> current ranking of tokens and scores
      */
-    pair<vector<py::bytes>, vector<long unsigned>> custom_steps(vector<string> &tokens)
+    pair<vector<py::bytes>, vector<long unsigned>> custom_steps(const vector<string> &tokens)
     {
-        for (string &token : tokens)
+        for (const string &token : tokens)
         {
             unsigned int rank = ranks.size();
             ranks.emplace_back(token);
@@ -396,7 +395,7 @@ public:
             cout << dec << "] | " << score << endl;
         }
 
-        for (auto &r : ranks)
+        for (const auto &r : ranks)
         {
             shortlist.erase(r);
             results.erase(r);
@@ -410,21 +409,21 @@ public:
      * @param k target number of tokens
      * @return pair<vector<string>, vector<long unsigned>> current ranking of tokens and scores
      */
-    pair<vector<py::bytes>, vector<long unsigned>> solve_to_step(unsigned int k)
+    pair<vector<py::bytes>, vector<long unsigned>> solve_to_step(const unsigned int k)
     {
         auto total_start = chrono::high_resolution_clock::now();
 
-        for (auto &s : substring_to_index)
+        for (const auto &s : substring_to_index)
         {
             shortlist.insert(s.first);
         }
-        for (auto &s : shortlist)
+        for (const auto &s : shortlist)
         {
             results[s] = 0;
         }
 
         /* Main GreedTok routine */
-        cout << "Starting main routine..." << endl;
+        // cout << "Starting main routine..." << endl;
         for (unsigned int rank = ranks.size() + 1; rank <= k; ++rank)
         {
             auto start = chrono::high_resolution_clock::now();
@@ -444,8 +443,19 @@ public:
                     }
                 });
 
-            pair<string, long unsigned> best = *max_element(results.begin(), results.end(), [](const pair<string, long unsigned> a, const pair<string, long unsigned> b)
-                                                            { return a.second < b.second; });
+            const pair<string, long unsigned> best = *max_element(
+                results.begin(),
+                results.end(),
+                [](
+                    const pair<string,
+                               long unsigned>
+                        a,
+                    const pair<string,
+                               long unsigned>
+                        b)
+                {
+                    return a.second < b.second;
+                });
             ranks.emplace_back(best.first);
             scores.emplace_back(best.second);
 
@@ -454,12 +464,12 @@ public:
             unordered_set<long unsigned> visited = alter_graph(substring_to_index[best.first], &T_arr, &D_arr, rank);
 
             shortlist.clear();
-            for (auto &v : visited)
+            for (const auto &v : visited)
             {
                 shortlist.insert(word_to_substring[index_to_word[v]].begin(),
                                  word_to_substring[index_to_word[v]].end());
             }
-            for (auto &r : ranks)
+            for (const auto &r : ranks)
             {
                 shortlist.erase(r);
             }
@@ -468,7 +478,7 @@ public:
             stop = chrono::high_resolution_clock::now();
             auto duration2 = chrono::duration_cast<chrono::milliseconds>(stop - start);
             cout << rank << ". |" << best.first << " [" << hex;
-            for (auto c : best.first)
+            for (const auto &c : best.first)
             {
                 cout << (unsigned int)(unsigned char)c << " ";
             }
