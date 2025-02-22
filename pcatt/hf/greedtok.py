@@ -812,30 +812,47 @@ class GreedTok(PreTrainedTokenizer):
                 "utf-8", errors="backslashreplace"
             )
         else:
-            if skip_special_tokens:
-                output = [
-                    self.final_ids_map[x]
-                    for x in token_ids
-                    if x not in self.special_token_ids
-                ]
-            else:
-                output = [self.final_ids_map[x] for x in token_ids]
+            output = self.encoder.decode(
+                token_ids, 
+                skip_special_tokens).decode(
+                    "utf-8", 
+                    errors="backslashreplace")
             if clean_up_tokenization_spaces:
                 output = self.clean_up_tokenization(output)
-            return b"".join(output).decode("utf-8", errors="backslashreplace")
-
-    def prepare_seq2seq_batch(
+            return output
+        
+    def batch_decode(
         self,
-        src_texts: List[str],
-        tgt_texts: Optional[List[str]] = None,
-        max_length: Optional[int] = None,
-        max_target_length: Optional[int] = None,
-        padding: str = "longest",
-        return_tensors: str = None,
-        truncation: bool = True,
+        sequences: Union[List[int], List[List[int]], "np.ndarray", "torch.Tensor", "tf.Tensor"],
+        skip_special_tokens: bool = False,
+        clean_up_tokenization_spaces: bool = None,
         **kwargs,
-    ) -> BatchEncoding:
-        NotImplementedError
+    ) -> List[str]:
+        """
+        Convert a list of lists of token ids into a list of strings by calling decode.
+
+        Args:
+            sequences (`Union[List[int], List[List[int]], np.ndarray, torch.Tensor, tf.Tensor]`):
+                List of tokenized input ids. Can be obtained using the `__call__` method.
+            skip_special_tokens (`bool`, *optional*, defaults to `False`):
+                Whether or not to remove special tokens in the decoding.
+            clean_up_tokenization_spaces (`bool`, *optional*):
+                Whether or not to clean up the tokenization spaces. If `None`, will default to
+                `self.clean_up_tokenization_spaces`.
+            kwargs (additional keyword arguments, *optional*):
+                Will be passed to the underlying model specific decode method.
+
+        Returns:
+            `List[str]`: The list of decoded sentences.
+        """
+        if isinstance(sequences[0], int):
+            sequences = [sequences]
+        return [
+                self.clean_up_tokenization(seq.decode("utf-8", errors="backslashreplace")) 
+                if clean_up_tokenization_spaces
+                else seq.decode("utf-8", errors="backslashreplace")
+            for seq in self.encoder.batch_decode(sequences, skip_special_tokens)
+        ]
 
     def train_new_from_iterator(
         self,

@@ -12,6 +12,7 @@ namespace py = pybind11;
 #include <unordered_set>
 #include <regex>
 #include <limits.h>
+#include <execution>
 #include "tbb.h"
 using namespace std;
 namespace chrono = std::chrono;
@@ -33,6 +34,7 @@ struct SubstringPos
     long unsigned arr_end;
     unsigned int substr_start;
     unsigned int substr_end;
+    bool skip = false;
     /**
      * @brief Construct a new Substring Pos object, meant for internal use
      *
@@ -54,19 +56,11 @@ class GreedyPCOTokenizer
 {
 
 public:
-    /**
-     * @brief custom function to sort SubstringPos, meant for internal use
-     *
-     * @param lhs SubstringPos 1
-     * @param rhs SubstringPos 2
-     * @return true when lhs < rhs based on start index
-     * @return false otherwise
-     */
-    static bool substring_pos_sorter(
-        SubstringPos const &lhs,
-        SubstringPos const &rhs)
+    static bool token_score_sorter(
+        const pair<string, long unsigned> a,
+        const pair<string, long unsigned> b)
     {
-        return lhs.substr_start < rhs.substr_start;
+        return a.second < b.second;
     }
 
     long unsigned singleton_count = 0;
@@ -102,7 +96,6 @@ public:
 
     void build_counter_from_text(const vector<vector<string>> &texts)
     {
-
         tbb::concurrent_hash_map<string, unsigned long> async_counter;
         tbb::parallel_for(
             tbb::blocked_range<long unsigned>(0, texts.size()),
@@ -296,57 +289,51 @@ public:
         const unordered_map<long unsigned, long unsigned> &id_to_count)
     {
         long unsigned counts = 0;
-
-        unordered_map<long unsigned, vector<SubstringPos>> pplaces;
+        long unsigned prev_end = 0;
+        long unsigned current_arr_start = 0;
         for (const auto &p : places)
         {
-            if (pplaces.find(p.arr_start) == pplaces.end())
+
+            const long unsigned ws = p.arr_start;
+            const long unsigned we = p.arr_end;
+            const int i = p.substr_start;
+            const int j = p.substr_end;
+
+            if (p.arr_start != current_arr_start)
             {
-                pplaces[p.arr_start] = vector<SubstringPos>();
+                prev_end = 0;
+                current_arr_start = p.arr_start;
             }
-            pplaces[p.arr_start].emplace_back(p);
-        }
 
-        for (auto &pp : pplaces)
-        {
-            long unsigned prev_end = 0;
-            sort(pp.second.begin(), pp.second.end(), &substring_pos_sorter);
-
-            for (const auto &p : pp.second)
+            if (ws + i < prev_end)
             {
-
-                const long unsigned ws = p.arr_start;
-                const long unsigned we = p.arr_end;
-                const int i = p.substr_start;
-                const int j = p.substr_end;
-                if (ws + i < prev_end)
-                {
-                    continue;
-                }
-                if (i > 0 && (*T_arr_ptr)[ws + i - 1] != 0 && (*T_arr_ptr)[ws + i - 1] == (*T_arr_ptr)[ws + i] && (*D_arr_ptr)[ws + i - 1] == (*D_arr_ptr)[ws + i])
-                {
-                    continue;
-                }
-                if (ws + j < we && (*T_arr_ptr)[ws + j] != 0 && (*T_arr_ptr)[ws + j - 1] == (*T_arr_ptr)[ws + j] && (*D_arr_ptr)[ws + j - 1] == (*D_arr_ptr)[ws + j])
-                {
-                    continue;
-                }
-                int nones = 0;
-                set<pair<int unsigned, int unsigned>> uniqs;
-                for (int k = i; k < j; ++k)
-                {
-                    if ((*T_arr_ptr)[ws + k] == 0)
-                    {
-                        nones += 1;
-                    }
-                    else
-                    {
-                        uniqs.insert(pair((*T_arr_ptr)[ws + k], (*D_arr_ptr)[ws + k]));
-                    }
-                }
-                counts += id_to_count.at(ws) * (nones + uniqs.size() - 1);
-                prev_end = ws + j;
+                continue;
             }
+            if (i > 0 && (*T_arr_ptr)[ws + i - 1] != 0 && (*T_arr_ptr)[ws + i - 1] == (*T_arr_ptr)[ws + i] && (*D_arr_ptr)[ws + i - 1] == (*D_arr_ptr)[ws + i])
+            {
+                continue;
+            }
+            if (ws + j < we && (*T_arr_ptr)[ws + j] != 0 && (*T_arr_ptr)[ws + j - 1] == (*T_arr_ptr)[ws + j] && (*D_arr_ptr)[ws + j - 1] == (*D_arr_ptr)[ws + j])
+            {
+                continue;
+            }
+            int nones = 0;
+            vector<pair<int unsigned, int unsigned>> uniqs;
+            uniqs.reserve(j - i);
+            for (int k = i; k < j; ++k)
+            {
+                if ((*T_arr_ptr)[ws + k] == 0)
+                {
+                    nones += 1;
+                }
+                else
+                {
+                    uniqs.emplace_back(pair((*T_arr_ptr)[ws + k], (*D_arr_ptr)[ws + k]));
+                }
+            }
+            sort(uniqs.begin(), uniqs.end());
+            counts += id_to_count.at(ws) * (nones + (unique(uniqs.begin(), uniqs.end()) - uniqs.begin()) - 1);
+            prev_end = ws + j;
         }
         return counts;
     }
@@ -487,19 +474,11 @@ public:
                     }
                 });
 
-            const pair<string, long unsigned> best = *max_element(
-                results.begin(),
-                results.end(),
-                [](
-                    const pair<string,
-                               long unsigned>
-                        a,
-                    const pair<string,
-                               long unsigned>
-                        b)
-                {
-                    return a.second < b.second;
-                });
+            pair<string, long unsigned> best = *max_element(
+                execution::par_unseq,
+                results.cbegin(),
+                results.cend(),
+                token_score_sorter);
             ranks.emplace_back(best.first);
             scores.emplace_back(best.second);
 
@@ -508,10 +487,11 @@ public:
             unordered_set<long unsigned> visited = alter_graph(substring_to_index[best.first], &T_arr, &D_arr, rank);
 
             shortlist.clear();
-            for (const auto &v : visited)
+            for (const auto v : visited)
             {
-                shortlist.insert(word_to_substring[index_to_word[v]].begin(),
-                                 word_to_substring[index_to_word[v]].end());
+                shortlist.insert(
+                    word_to_substring[index_to_word[v]].cbegin(),
+                    word_to_substring[index_to_word[v]].cend());
             }
             for (const auto &r : ranks)
             {
@@ -522,7 +502,7 @@ public:
             stop = chrono::high_resolution_clock::now();
             auto duration2 = chrono::duration_cast<chrono::milliseconds>(stop - start);
             cout << rank << ". |" << best.first << " [" << hex;
-            for (const auto &c : best.first)
+            for (const auto c : best.first)
             {
                 cout << (unsigned int)(unsigned char)c << " ";
             }

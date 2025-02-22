@@ -153,7 +153,7 @@ public:
      *
      * @param rules order of tokens in decreasing cover priority
      */
-    TrieCache(vector<string> &rules) : rules(rules)
+    TrieCache(const vector<string> &rules) : rules(rules)
     {
         for (unsigned int i = 0; i < rules.size(); ++i)
         {
@@ -236,22 +236,23 @@ enum class PaddingSide : char
 
 class GreedyTokenizer
 {
-    unordered_map<string, int unsigned> rules_cache;
-    unordered_map<char, int unsigned> singleton_cache;
-    TrieCache trie_cache;
     regex re;
     sregex_token_iterator end;
     vector<string> rules;
+    TrieCache trie_cache;
     unsigned int max_token_size = 0;
     unsigned int _max_length = UINT16_MAX;
     unsigned int _pad_to_multiple_of = 1;
-    unordered_map<string, string> _special_tokens;
-    unordered_map<string, unsigned int> _special_tokens_map;
     unordered_set<unsigned int> _special_token_ids;
-    TruncationStrategy _truncation_strategy = TruncationStrategy::DO_NOT_TRUNCATE;
-    TruncationSide _truncation_side = TruncationSide::RIGHT;
+    unordered_map<string, string> _special_tokens;
+    unordered_map<string, int unsigned> rules_cache;
+    unordered_map<int unsigned, string> decode_cache;
+    unordered_map<char, int unsigned> singleton_cache;
+    unordered_map<string, unsigned int> _special_tokens_map;
     PaddingSide _padding_side = PaddingSide::RIGHT;
+    TruncationSide _truncation_side = TruncationSide::RIGHT;
     PaddingStrategy _padding_strategy = PaddingStrategy::DO_NOT_PAD;
+    TruncationStrategy _truncation_strategy = TruncationStrategy::DO_NOT_TRUNCATE;
 
     /**
      * @brief custom function to sort CoverPos, meant for internal use
@@ -277,14 +278,15 @@ public:
      * @param rules_input order of tokens in decreasing cover priority
      */
     GreedyTokenizer(
-        vector<string> rules_input,
-        unordered_map<string, string> special_tokens)
+        const vector<string> rules_input,
+        const unordered_map<string, string> special_tokens)
     {
         trie_cache = TrieCache(rules_input);
         for (int unsigned i = 0; i < rules_input.size(); ++i)
         {
-            rules_cache[rules_input.at(i)] = 1 + rules.size();
             rules.emplace_back(rules_input.at(i));
+            rules_cache[rules_input.at(i)] = rules.size();
+            decode_cache[rules.size() - 1] = rules_input.at(i);
             if (rules_input.at(i).size() > max_token_size)
             {
                 max_token_size = rules_input.at(i).size();
@@ -296,8 +298,9 @@ public:
             if (auto search = rules_cache.find(b); search == rules_cache.end())
             {
                 rules.emplace_back(b);
-                singleton_cache[(char)i] = rules.size();
                 rules_cache[b] = rules.size();
+                decode_cache[rules.size() - 1] = b;
+                singleton_cache[(char)i] = rules.size();
             }
             else
             {
@@ -305,7 +308,7 @@ public:
             }
         }
         _special_tokens = special_tokens;
-        for (auto t : special_tokens)
+        for (const auto &t : special_tokens)
         {
             _special_token_ids.insert(rules_cache.at(t.second) - 1);
             unsigned int sp_idx = rules_cache.at(t.second) - 1;
@@ -345,7 +348,7 @@ public:
      * @param index of token
      * @return vector<uint8_t> representation of the token
      */
-    py::bytes get_rule(int index)
+    py::bytes get_rule(const int index)
     {
         return py::bytes(rules.at(index));
     }
@@ -355,13 +358,72 @@ public:
         return rules.size();
     }
 
+    py::bytes decode(
+        const vector<unsigned int> encodings,
+        bool skip_special_tokens)
+    {
+        string s = "";
+        if (skip_special_tokens)
+        {
+            for (const unsigned int i : encodings)
+            {
+                if (_special_token_ids.find(i) == _special_token_ids.end())
+                {
+                    s += decode_cache.at(i);
+                }
+            }
+        }
+        else
+        {
+            for (const unsigned int i : encodings)
+            {
+                s += decode_cache.at(i);
+            }
+        }
+        return py::bytes(s);
+    }
+
+    vector<py::bytes> batch_decode(
+        const vector<vector<unsigned int>> &batch_encodings,
+        bool skip_special_tokens)
+    {
+        vector<string> batch_s(batch_encodings.size(), "");
+        tbb::parallel_for(
+            tbb::blocked_range<int unsigned>(0, batch_encodings.size()),
+            [&](tbb::blocked_range<int unsigned> r)
+            {
+                for (int unsigned i = r.begin(); i < r.end(); ++i)
+                {
+                    if (skip_special_tokens)
+                    {
+                        for (const unsigned int j : batch_encodings.at(i))
+                        {
+                            if (_special_token_ids.find(j) == _special_token_ids.end())
+                            {
+                                batch_s[i] += decode_cache.at(j);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (const unsigned int j : batch_encodings.at(i))
+                        {
+                            batch_s[i] += decode_cache.at(j);
+                        }
+                    }
+                }
+            });
+        return vector<py::bytes>(batch_s.cbegin(), batch_s.cend());
+    }
+
     /**
      * @brief Tokenize text that were already pre-split
      *
      * @param text list of words
      * @return vector<int unsigned> list of tokens' ids
      */
-    vector<int unsigned> tokenize_presplit(const vector<string> &text)
+    vector<int unsigned>
+    tokenize_presplit(const vector<string> &text)
     {
         vector<int unsigned> results;
 
@@ -402,7 +464,12 @@ public:
      * @param to_check a list of Cover Pos objects to investigate
      * @param result place to add tokens' ids
      */
-    void tokenize_portion(const string &text, const unsigned int &start_idx, const unsigned int &offset, vector<CoverPos> &to_check, vector<int unsigned> *result)
+    void tokenize_portion(
+        const string &text,
+        const unsigned int &start_idx,
+        const unsigned int &offset,
+        vector<CoverPos> &to_check,
+        vector<int unsigned> *result)
     {
         if (offset == 1)
         {
@@ -417,7 +484,7 @@ public:
         vector<int unsigned> T_arr(offset, 0);
 
         sort(to_check.begin(), to_check.end(), &cover_pos_sorter);
-        for (CoverPos cover : to_check)
+        for (const CoverPos &cover : to_check)
         {
             int unsigned i = cover.start - start_idx;
             int unsigned i_o = i - 1;
@@ -514,7 +581,7 @@ public:
      * @param texts list of strings
      * @return vector<vector<int unsigned>>
      */
-    vector<vector<int unsigned>> batch_split_and_tokenize(vector<string> &texts)
+    vector<vector<int unsigned>> batch_split_and_tokenize(const vector<string> &texts)
     {
         vector<vector<int unsigned>> results(texts.size(), vector<int unsigned>{});
         tbb::parallel_for(
@@ -532,8 +599,8 @@ public:
 
     void pad(
         vector<int unsigned> *encoded_input,
-        unsigned int num_pads_to_add,
-        unsigned int pad_token_id)
+        const unsigned int num_pads_to_add,
+        const unsigned int pad_token_id)
     {
         if (_padding_side == PaddingSide::LEFT)
         {
@@ -553,13 +620,13 @@ public:
 
     pair<vector<int unsigned>, vector<int unsigned>> truncate_sequence_get_overflow(
         const vector<int unsigned> &ids,
-        int unsigned num_tokens_to_remove = 0,
-        int unsigned stride = 0)
+        const int unsigned num_tokens_to_remove = 0,
+        const int unsigned stride = 0)
     {
         // new_ids, overflowing
         if (ids.size() > num_tokens_to_remove)
         {
-            int unsigned window_length = min((int unsigned)ids.size(), stride + num_tokens_to_remove);
+            const int unsigned window_length = min((int unsigned)ids.size(), stride + num_tokens_to_remove);
             if (_truncation_side == TruncationSide::RIGHT)
             {
                 return pair(
@@ -644,8 +711,8 @@ public:
     pair<vector<unsigned int>, vector<unsigned int>> basic_callback_pair(
         vector<unsigned int> &encoding, vector<unsigned int> &encoding_pair)
     {
-        vector<unsigned int> v(encoding.begin(), encoding.end());
-        v.insert(v.end(), encoding_pair.begin(), encoding_pair.end());
+        vector<unsigned int> v(encoding.cbegin(), encoding.cend());
+        v.insert(v.end(), encoding_pair.cbegin(), encoding_pair.cend());
         v.emplace_back(rules_cache[" "]);
         vector<unsigned int> token_type(encoding.size(), 0);
         token_type.insert(token_type.end(), encoding_pair.size(), 1);
@@ -707,7 +774,7 @@ public:
             {
                 // then strategy is longest
                 actual_length = 0;
-                for (auto &r : results->at("input_ids"))
+                for (const auto &r : results->at("input_ids"))
                 {
                     actual_length = r.size() > actual_length ? r.size() : actual_length;
                 }
@@ -977,8 +1044,8 @@ public:
     void truncate(
         unordered_map<string, vector<vector<unsigned int>>> *results,
         vector<vector<unsigned int>> &encodings,
-        unsigned int stride,
-        bool return_overflowing_tokens,
+        const unsigned int stride,
+        const bool return_overflowing_tokens,
         const function<vector<unsigned int>(vector<unsigned int> &encodings)> f = NULL)
     {
         if (_truncation_strategy != TruncationStrategy::DO_NOT_TRUNCATE)
@@ -1083,6 +1150,7 @@ public:
 class PyGreedyTokenizer : public GreedyTokenizer
 {
 public:
+    using GreedyTokenizer::batch_decode;
     using GreedyTokenizer::batch_encode;
     using GreedyTokenizer::batch_encode_pairs;
     using GreedyTokenizer::batch_encode_pairs_presplit;
@@ -1094,6 +1162,7 @@ public:
     using GreedyTokenizer::batch_transform_pair;
     using GreedyTokenizer::build_masks;
     using GreedyTokenizer::build_special_token_mask;
+    using GreedyTokenizer::decode;
     using GreedyTokenizer::get_rule;
     using GreedyTokenizer::get_rules_size;
     using GreedyTokenizer::get_special_token_ids;
@@ -1124,6 +1193,8 @@ PYBIND11_MODULE(greedy_encoder, var)
         .def(py::init<>([](vector<string> &cover_order,
                            unordered_map<string, string> &special_tokens)
                         { return new GreedyTokenizer(cover_order, special_tokens); }))
+        .def("batch_decode", &GreedyTokenizer::batch_decode)
+        .def("decode", &GreedyTokenizer::decode)
         .def("batch_encode", &GreedyTokenizer::batch_encode,
              py::arg("texts"),
              py::arg("return_attention_mask"),
