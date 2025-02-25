@@ -62,7 +62,7 @@ public:
     {
         if (a.second == b.second)
         {
-            return a.first > b.first;
+            return a.first.size() > b.first.size();
         }
         return a.second < b.second;
     }
@@ -244,14 +244,11 @@ public:
                     a.release();
                 }
             });
-        word_counts = unordered_map<string, long unsigned>(async_counter.cbegin(), async_counter.cend());
+
         for (const auto &item : async_counter)
         {
-            if (word_counts.find(item.first) == word_counts.end())
-            {
-                word_counts[item.first] = 0;
-            }
-            word_counts[item.first] += item.second;
+            auto p = word_counts.try_emplace(item.first, 0);
+            p.first->second += item.second;
         }
     }
 
@@ -297,11 +294,8 @@ public:
                     {
                         continue;
                     }
-                    if (substring_to_index.find(substr) == substring_to_index.end())
-                    {
-                        substring_to_index[substr] = vector<SubstringPos>();
-                    }
-                    substring_to_index[substr].push_back({next_id, end_id, i, j});
+                    auto p = substring_to_index.try_emplace(substr, vector<SubstringPos>());
+                    p.first->second.push_back({next_id, end_id, i, j});
                     word_to_substring[item.first].insert(move(substr));
                 }
             }
@@ -507,7 +501,7 @@ public:
     {
         for (const string &token : tokens)
         {
-            unsigned int rank = ranks.size();
+            unsigned int rank = ranks.size() + 1;
             ranks.emplace_back(token);
             unsigned long score = calculate_score(substring_to_index[token], &T_arr, &D_arr, id_to_count);
             scores.emplace_back(score);
