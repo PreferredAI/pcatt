@@ -31,11 +31,10 @@ c++ -O3 -Wall -shared -std=c++23 \
 
 struct SubstringPos
 {
-    long unsigned arr_start;
-    long unsigned arr_end;
+    unsigned long arr_start;
+    unsigned long arr_end;
     unsigned int substr_start;
     unsigned int substr_end;
-    bool skip = false;
     /**
      * @brief Construct a new Substring Pos object, meant for internal use
      *
@@ -44,12 +43,16 @@ struct SubstringPos
      * @param c start of substring in word
      * @param d end of substring in word
      */
-    SubstringPos(long unsigned a, long unsigned b, unsigned int c, unsigned int d)
+    SubstringPos(
+        unsigned long arr_start,
+        unsigned long arr_end,
+        unsigned int substr_start,
+        unsigned int substr_end)
+        : arr_start(arr_start),
+          arr_end(arr_end),
+          substr_start(substr_start),
+          substr_end(substr_end)
     {
-        arr_start = a;
-        arr_end = b;
-        substr_start = c;
-        substr_end = d;
     }
 };
 
@@ -67,17 +70,6 @@ public:
         return a.second < b.second;
     }
 };
-
-// static bool min_token_score_compare(
-//     const pair<string, long unsigned> a,
-//     const pair<string, long unsigned> b)
-// {
-//     if (a.second == b.second)
-//     {
-//         return a.first < b.first;
-//     }
-//     return a.second > b.second;
-// }
 
 class ResultsCache
 {
@@ -107,49 +99,24 @@ public:
         initialized = true;
     }
 
-    // void make_mini_heap()
-    // {
-    //     // nothing to init or enough
-    //     if (large_heap.size() == 0 || mini_heap.size() > shortlist_size)
-    //     {
-    //         return;
-    //     }
-    //     while (mini_heap.size() < shortlist_size && large_heap.size() != 0)
-    //     {
-    //         pop_heap(large_heap.begin(), large_heap.end(), max_token_score_compare);
-    //         pair<string, unsigned long> p = large_heap.back();
-    //         large_heap.pop_back();
-    //         if (blacklist.find(p.first) != blacklist.end())
-    //         {
-    //             continue;
-    //         }
-    //         if (p.second < current_threshold)
-    //         {
-    //             current_threshold = p.second;
-    //         }
-    //         cout << "adding: " << p.first << " " << p.second << endl;
-    //         mini_heap.emplace_back(p);
-    //     }
-    //     make_heap(mini_heap.begin(), mini_heap.end(), max_token_score_compare);
-    //     cout << "init mini heap add " << shortlist_size - mini_heap.size() << endl;
-    // }
-
-    vector<string> get_checkables(const unordered_set<string> &shortlist_set)
+    vector<string> get_checkables(
+        const vector<bool> &to_visit_arr,
+        const unordered_map<string, unsigned long> &substring_to_index)
     {
         vector<string> to_check_again{};
 
         while (to_check_again.size() < shortlist_size && large_heap.size() > 0)
         {
             pair<string, unsigned long> p = large_heap.top();
-            // cout << "checking :" << p.first << " " << p.second << endl;
             if (blacklist.find(p.first) != blacklist.end())
             {
                 large_heap.pop();
                 continue;
             }
-            if (shortlist_set.find(p.first) != shortlist_set.end())
+
+            if (to_visit_arr.at(substring_to_index.at(p.first)) == true)
             {
-                to_check_again.push_back(p.first);
+                to_check_again.emplace_back(p.first);
                 large_heap.pop();
             }
             else
@@ -157,7 +124,6 @@ public:
                 break;
             }
         }
-        // cout << "get checkables: " << to_check_again.size() << endl;
         return to_check_again;
     }
 
@@ -165,7 +131,6 @@ public:
     {
         const pair<string, unsigned long> p = large_heap.top();
         large_heap.pop();
-        // cout << "RETURNING " << p.first << p.second << endl;
         return p;
     }
 
@@ -187,20 +152,21 @@ class GreedyPCOTokenizer
 {
 
 public:
-    long unsigned singleton_count = 0;
+    unsigned long singleton_count = 0;
     ResultsCache results;
+    mutex pco_mutex;
     vector<string> ranks;
-    vector<int unsigned> T_arr;
-    vector<int unsigned> D_arr;
-    vector<long unsigned> scores;
-    unordered_set<string> altered;
+    vector<unsigned int> T_arr;
+    vector<unsigned int> D_arr;
+    vector<bool> to_visit_arr;
+    vector<unsigned long> scores;
     unordered_set<string> candidate_tokens{};
-    unordered_map<string, long unsigned> word_counts;
-    unordered_map<long unsigned, string> index_to_word;
-    unordered_map<long unsigned, long unsigned> id_to_count;
-    unordered_map<string, unordered_set<string>> word_to_substring;
-    unordered_map<string, vector<SubstringPos>> substring_to_index;
-    unordered_map<string, pair<long unsigned, long unsigned>> word_to_index;
+    unordered_map<string, unsigned long> word_counts;
+    unordered_map<unsigned long, unsigned long> id_to_count;
+    unordered_map<string, unsigned long> substring_to_index;
+    unordered_map<string, vector<SubstringPos>> substring_to_positions;
+    unordered_map<string, pair<unsigned long, unsigned long>> word_to_index;
+    unordered_map<unsigned long, unordered_set<unsigned long>> word_to_substrings;
 
     /**
      * @brief Construct a new Greedy P C O Tokenizer object
@@ -209,7 +175,7 @@ public:
      * @param candidate_tokens to investigate
      */
     GreedyPCOTokenizer(
-        unordered_map<string, long unsigned> word_counts = {},
+        unordered_map<string, unsigned long> word_counts = {},
         unordered_set<string> candidate_tokens = {},
         unsigned long shortlist_size = 100)
         : results(ResultsCache(shortlist_size)),
@@ -224,11 +190,11 @@ public:
     {
         tbb::concurrent_hash_map<string, unsigned long> async_counter;
         tbb::parallel_for(
-            tbb::blocked_range<long unsigned>(0, texts.size()),
-            [&](tbb::blocked_range<long unsigned> r)
+            tbb::blocked_range<unsigned long>(0, texts.size()),
+            [&](tbb::blocked_range<unsigned long> r)
             {
                 unordered_map<string, unsigned long> temp_counter;
-                for (long unsigned i = r.begin(); i < r.end(); ++i)
+                for (unsigned long i = r.begin(); i < r.end(); ++i)
                 {
                     for (const string &w : texts.at(i))
                     {
@@ -269,18 +235,16 @@ public:
         cout << "Min. word count: " << min_word_count << endl;
         /* Initialize variables */
         auto start = chrono::high_resolution_clock::now();
-        long unsigned next_id = 0;
-        long unsigned end_id = 0;
+        unsigned long next_id = 0;
+        unsigned long end_id = 0;
         for (const auto &item : word_counts)
         {
-
             singleton_count += item.first.size();
-
             end_id = next_id + item.first.size();
             id_to_count[next_id] = item.second;
-
             word_to_index[item.first] = pair(next_id, end_id);
-            word_to_substring[item.first] = unordered_set<string>();
+            auto w_ptr = word_to_substrings.try_emplace(next_id, unordered_set<unsigned long>{});
+
             for (unsigned int i = 0; i < item.first.size(); ++i)
             {
                 for (unsigned int j = i + 2; j < min(max_token_length + i, item.first.size() + 1); ++j)
@@ -294,27 +258,24 @@ public:
                     {
                         continue;
                     }
-                    auto p = substring_to_index.try_emplace(substr, vector<SubstringPos>());
+                    auto substr_idx = substring_to_index.try_emplace(substr, substring_to_index.size());
+                    w_ptr.first->second.emplace(substr_idx.first->second);
+                    auto p = substring_to_positions.try_emplace(substr, vector<SubstringPos>{});
                     p.first->second.push_back({next_id, end_id, i, j});
-                    word_to_substring[item.first].insert(move(substr));
                 }
             }
             next_id = end_id;
         }
 
-        for (const auto &kv : word_to_index)
-        {
-            index_to_word[kv.second.first] = move(kv.first);
-        }
-
         if (candidate_tokens.size() == 0)
         {
-            cout << "Final candidate token set size: " << substring_to_index.size() << endl;
+            cout << "Final candidate token set size: " << substring_to_positions.size() << endl;
         }
 
         /* initialize more variables */
-        T_arr = vector<int unsigned>(singleton_count, 0);
-        D_arr = vector<int unsigned>(singleton_count, 0);
+        T_arr = vector<unsigned int>(singleton_count, 0);
+        D_arr = vector<unsigned int>(singleton_count, 0);
+        to_visit_arr = vector<bool>(substring_to_index.size(), false);
         auto stop = chrono::high_resolution_clock::now();
         auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
         cout << "Initial setup phase: " << duration.count() << " ms" << endl;
@@ -339,7 +300,7 @@ public:
     {
         if (candidate_tokens.size() == 0)
         {
-            return substring_to_index.size();
+            return substring_to_positions.size();
         }
         else
         {
@@ -367,7 +328,6 @@ public:
         long unsigned current_arr_start = 0;
         for (const auto &p : places)
         {
-
             const long unsigned ws = p.arr_start;
             const long unsigned we = p.arr_end;
             const int i = p.substr_start;
@@ -418,19 +378,19 @@ public:
      * @param items Substring Positions to cover with rank_idx
      * @param T_arr_ptr Array to track assigned tokens
      * @param D_arr_ptr Array to track duplicates
+     * @param to_visit_ptr Array to track duplicates
      * @param rank_idx Assigning elements to tokens with rank
-     * @return unordered_set<long unsigned> word start positions affected by change
      */
-    unordered_set<long unsigned> alter_graph(
+    void alter_graph(
         const vector<SubstringPos> &items,
         vector<int unsigned> *T_arr_ptr,
         vector<int unsigned> *D_arr_ptr,
+        vector<bool> *to_visit_ptr,
         const int &rank_idx)
     {
 
-        unordered_set<long unsigned> visited;
-        long unsigned prev_w_start = -1;
-        int d_counter = 0;
+        unsigned long prev_w_start = UINT64_MAX;
+        unsigned int d_counter = 0;
         for (const auto &p : items)
         {
             const long unsigned ws = p.arr_start;
@@ -446,11 +406,18 @@ public:
             {
                 continue;
             }
-
-            visited.insert(ws);
             if (ws != prev_w_start)
             {
                 d_counter = 0;
+
+                for_each(
+                    execution::par,
+                    word_to_substrings.at(ws).cbegin(),
+                    word_to_substrings.at(ws).cend(),
+                    [this](const unsigned long substr_idx)
+                    {
+                        to_visit_arr[substr_idx] = true;
+                    });
             }
             if (ws == prev_w_start)
             {
@@ -463,7 +430,6 @@ public:
             }
             prev_w_start = ws;
         }
-        return visited;
     }
 
     vector<py::bytes> get_ranks()
@@ -495,69 +461,72 @@ public:
      * @brief Advancing the current state with specific tokens
      *
      * @param tokens the order of tokens to be used
-     * @return pair<vector<string>, vector<long unsigned>> current ranking of tokens and scores
+     * @return pair<vector<string>, vector<unsigned long>> current ranking of tokens and scores
      */
-    pair<vector<py::bytes>, vector<long unsigned>> custom_steps(const vector<string> &tokens)
+    pair<vector<py::bytes>, vector<unsigned long>> custom_steps(const vector<string> &tokens)
     {
         for (const string &token : tokens)
         {
-            unsigned int rank = ranks.size() + 1;
+            unsigned int rank_idx = ranks.size() + 1;
             ranks.emplace_back(token);
-            unsigned long score = calculate_score(substring_to_index[token], &T_arr, &D_arr, id_to_count);
-            scores.emplace_back(score);
-            unordered_set<long unsigned> visited = alter_graph(substring_to_index[token], &T_arr, &D_arr, rank);
-            print_step(rank, token, score);
-            for (const auto v : visited)
+            unsigned long score = 0;
+            if (substring_to_index.find(token) != substring_to_index.end())
             {
-                altered.insert(
-                    word_to_substring[index_to_word[v]].cbegin(),
-                    word_to_substring[index_to_word[v]].cend());
+                score = calculate_score(
+                    substring_to_positions[token],
+                    &T_arr, &D_arr, id_to_count);
+                alter_graph(
+                    substring_to_positions[token],
+                    &T_arr, &D_arr, &to_visit_arr, rank_idx);
+                to_visit_arr[substring_to_index[token]] = false;
+                results.erase(token);
             }
-        }
-        for (const auto &r : ranks)
-        {
-            altered.erase(r);
-            results.erase(r);
+            scores.emplace_back(score);
+            print_step(rank_idx, token, score);
         }
         return pair(get_ranks(), scores);
     }
 
-    void init_sorted_heap()
+    /**
+     * @brief Creates a priority queue for greedy updates
+     */
+    void initialize_heap()
     {
         unordered_set<string> ranks_cache(ranks.cbegin(), ranks.cend());
+        vector<string> items;
+        items.reserve(substring_to_index.size());
         for (const auto &p : substring_to_index)
         {
             if (ranks_cache.find(p.first) == ranks_cache.end())
             {
-                altered.emplace(p.first);
+                items.emplace_back(p.first);
             }
         }
-        vector<string> items(altered.cbegin(), altered.cend());
         vector<pair<string, unsigned long>> all = solve(items);
         results.init(all);
-        altered.clear();
     }
 
-    vector<pair<string, unsigned long>> solve(const vector<string> &items)
+    /**
+     * @brief Calculate scores for selected substrings
+     */
+    vector<pair<string, unsigned long>> solve(const vector<string> &substrings)
     {
-        if (items.size() == 0)
+        if (substrings.size() == 0)
         {
             return {};
         }
-        vector<pair<string, unsigned long>> token_score_pairs(items.size());
+        vector<pair<string, unsigned long>> token_score_pairs(substrings.size());
         tbb::parallel_for(
-            tbb::blocked_range<long unsigned>(0, items.size()),
-            [&](tbb::blocked_range<long unsigned> r)
+            tbb::blocked_range<unsigned long>(0, substrings.size()),
+            [&](tbb::blocked_range<unsigned long> r)
             {
-                for (long unsigned i = r.begin(); i < r.end(); ++i)
+                for (unsigned long i = r.begin(); i < r.end(); ++i)
                 {
                     token_score_pairs[i] = pair(
-                        items[i],
-                        calculate_score(
-                            substring_to_index[items[i]],
-                            &T_arr,
-                            &D_arr,
-                            id_to_count));
+                        substrings[i],
+                        calculate_score(substring_to_positions[substrings[i]], &T_arr, &D_arr, id_to_count)
+                        // calculate_score(substrings[i]));
+                    );
                 }
             });
         return token_score_pairs;
@@ -567,9 +536,9 @@ public:
      * @brief Advance the current state till we have k number of tokens
      *
      * @param k target number of tokens
-     * @return pair<vector<string>, vector<long unsigned>> current ranking of tokens and scores
+     * @return pair<vector<string>, vector<unsigned long>> current ranking of tokens and scores
      */
-    pair<vector<py::bytes>, vector<long unsigned>> solve_to_step(const unsigned int k)
+    pair<vector<py::bytes>, vector<unsigned long>> solve_to_step(const unsigned int k)
     {
         auto total_start = chrono::high_resolution_clock::now();
         auto start = chrono::high_resolution_clock::now();
@@ -578,47 +547,41 @@ public:
         // if not initialized, count everything
         if (!results.initialized)
         {
-            init_sorted_heap();
-            num_checked += substring_to_index.size();
-            altered.clear();
+            initialize_heap();
+            num_checked += substring_to_positions.size();
+            for (unsigned int i = 0; i < to_visit_arr.size(); ++i)
+            {
+                to_visit_arr[i] = false;
+            }
         }
 
-        for (unsigned int rank = ranks.size() + 1; rank <= k; ++rank)
+        for (unsigned int rank_idx = ranks.size() + 1; rank_idx <= k; ++rank_idx)
         {
-            vector<string> to_check = results.get_checkables(altered);
+            vector<string> to_check = results.get_checkables(to_visit_arr, substring_to_index);
             while (to_check.size() > 0)
             {
                 vector<pair<string, unsigned long>> token_score_pairs = solve(to_check);
                 num_checked += to_check.size();
                 results.update(token_score_pairs);
-                for (const string &t : to_check)
+                for (const string &token : to_check)
                 {
-                    altered.erase(t);
+                    to_visit_arr[substring_to_index[token]] = false;
                 }
-                to_check = results.get_checkables(altered);
+                to_check = results.get_checkables(to_visit_arr, substring_to_index);
             }
-            pair<string, long unsigned> best = results.pop_best();
+            pair<string, unsigned long> best = results.pop_best();
             ranks.emplace_back(best.first);
             scores.emplace_back(best.second);
 
             auto stop = chrono::high_resolution_clock::now();
             auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
-            unordered_set<long unsigned> visited = alter_graph(substring_to_index[best.first], &T_arr, &D_arr, rank);
-            for (const auto v : visited)
-            {
-                altered.insert(
-                    word_to_substring[index_to_word[v]].cbegin(),
-                    word_to_substring[index_to_word[v]].cend());
-            }
-            for (const auto &r : ranks)
-            {
-                altered.erase(r);
-            }
+            alter_graph(substring_to_positions[best.first],
+                        &T_arr, &D_arr, &to_visit_arr, rank_idx);
 
             stop = chrono::high_resolution_clock::now();
             auto duration2 = chrono::duration_cast<chrono::milliseconds>(stop - start);
-            print_step(rank, best.first, best.second,
-                       " | " + to_string(duration.count()) + " ms | " + to_string(duration2.count()) + " ms | num. checks: " + to_string(num_checked) + " | altered size: " + to_string(altered.size()));
+            print_step(rank_idx, best.first, best.second,
+                       " | " + to_string(duration.count()) + " ms | " + to_string(duration2.count()) + " ms | num. checks: " + to_string(num_checked));
             start = chrono::high_resolution_clock::now();
             num_checked = 0;
         }
@@ -637,15 +600,15 @@ public:
     using GreedyPCOTokenizer::get_candidate_token_size;
     using GreedyPCOTokenizer::get_ranks;
     using GreedyPCOTokenizer::get_singleton_counts;
-    using GreedyPCOTokenizer::init_sorted_heap;
     using GreedyPCOTokenizer::initialize_graph;
+    using GreedyPCOTokenizer::initialize_heap;
     using GreedyPCOTokenizer::print_step;
     using GreedyPCOTokenizer::solve;
     using GreedyPCOTokenizer::solve_to_step;
 };
 
 GreedyPCOTokenizer *build(
-    unordered_map<string, long unsigned> word_counts = {},
+    unordered_map<string, unsigned long> word_counts = {},
     unordered_set<string> candidate_tokens = {})
 {
     return new GreedyPCOTokenizer(word_counts, candidate_tokens);
@@ -657,7 +620,7 @@ PYBIND11_MODULE(pco_tokenizer, var)
     py::class_<GreedyPCOTokenizer, PyGreedyPCOTokenizer>(var, "GreedyPCOTokenizer")
         .def(py::init<>(
             [](
-                unordered_map<string, long unsigned> word_counts = {},
+                unordered_map<string, unsigned long> word_counts = {},
                 unordered_set<string> candidate_tokens = {})
             {
                 return new GreedyPCOTokenizer(
@@ -675,7 +638,7 @@ PYBIND11_MODULE(pco_tokenizer, var)
         .def("get_candidate_token_size", &GreedyPCOTokenizer::get_candidate_token_size);
     var.def("build",
             &build,
-            py::arg("word_counts") = unordered_map<string, long unsigned>(),
+            py::arg("word_counts") = unordered_map<string, unsigned long>(),
             py::arg("candidate_tokens") = unordered_set<string>(),
             "Factory function for greedy PCO tokenizer, use this to create your token sets.");
 }

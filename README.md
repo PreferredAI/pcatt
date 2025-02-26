@@ -2,12 +2,30 @@
 In this work, we formulate tokenization as an optimization objective, show that it is NP-hard via a simple reduction from vertex cover, and propose a polynomial-time greedy algorithm **GreedTok**.
 Our formulation naturally relaxes to the well-studied weighted maximum coverage problem which has a simple $(1 - 1/e)$-approximation greedy algorithm.
 
+### Compute Performance Update
+Compared to the base implementation, beta6 has a considerable speedup! The key difference is the implementation of greedy updates on top of greedy choice. 
+
+<center>
+
+|Dataset| $k$ | #uniq words | #candidates | Previous (arXiv paper's) | Current (beta6) | improvement |
+| ------- | --- | -------: | -------: | -------: | -------: | :----: |
+| UN    |5K|105,505|884,630| ~140 seconds |  ~6 seconds  | x23 |
+| arXiv |5K|881,233|7,625,530| ~28 minutes | ~63 seconds | x26 |
+| Wiki  |10K|8,769,943|93,243,449| ~12.5 hours | ~11 minutes | x68 |
+| PubMed|10K|6,527,614|97,870,366| ~24.5 hours | ~11 minutes | x133|
+
+</center>
+
+Table results shows time to solve (obtain a $k$-sized token set) from word counts. Since most of the compute is front-heavy, solving for larger $k$ size is trivial.
+For detailed logs, compare cpp_logs/{$data}/{$data}.log versus cpp_logs/{$data}/{$data}_fast.log. 
+
+
 ### Beta: Huggingface AutoTokenizer interface
 
 Install the beta version (for transformers >= 4):
 ```
-wget "https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14-beta5.zip"
-unzip v0.14-beta5.zip -d pcatt
+wget "https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14-beta6.zip"
+unzip v0.14-beta6.zip -d pcatt
 cd pcatt
 pip install -r requirements.txt
 pip install transformers
