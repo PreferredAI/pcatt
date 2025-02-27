@@ -154,7 +154,6 @@ class GreedyPCOTokenizer
 public:
     unsigned long singleton_count = 0;
     ResultsCache results;
-    mutex pco_mutex;
     vector<string> ranks;
     vector<unsigned int> T_arr;
     vector<unsigned int> D_arr;
@@ -311,22 +310,15 @@ public:
     /**
      * @brief Calculate scores of a given substring defined by its positions in the array
      *
-     * @param places of SubstringPos locations of a substring
-     * @param T_arr_ptr Array to track assigned tokens
-     * @param D_arr_ptr Array to track duplicates
-     * @param id_to_count word to count mapping
+     * @param substring of interest
      * @return long unsigned : score of a particular substring
      */
-    long unsigned calculate_score(
-        const vector<SubstringPos> &places,
-        const vector<int unsigned> *T_arr_ptr,
-        const vector<int unsigned> *D_arr_ptr,
-        const unordered_map<long unsigned, long unsigned> &id_to_count)
+    long unsigned calculate_score(const string &substring)
     {
         long unsigned counts = 0;
         long unsigned prev_end = 0;
         long unsigned current_arr_start = 0;
-        for (const auto &p : places)
+        for (const auto &p : substring_to_positions[substring])
         {
             const long unsigned ws = p.arr_start;
             const long unsigned we = p.arr_end;
@@ -343,11 +335,11 @@ public:
             {
                 continue;
             }
-            if (i > 0 && (*T_arr_ptr)[ws + i - 1] != 0 && (*T_arr_ptr)[ws + i - 1] == (*T_arr_ptr)[ws + i] && (*D_arr_ptr)[ws + i - 1] == (*D_arr_ptr)[ws + i])
+            if (i > 0 && T_arr[ws + i - 1] != 0 && T_arr[ws + i - 1] == T_arr[ws + i] && D_arr[ws + i - 1] == D_arr[ws + i])
             {
                 continue;
             }
-            if (ws + j < we && (*T_arr_ptr)[ws + j] != 0 && (*T_arr_ptr)[ws + j - 1] == (*T_arr_ptr)[ws + j] && (*D_arr_ptr)[ws + j - 1] == (*D_arr_ptr)[ws + j])
+            if (ws + j < we && T_arr[ws + j] != 0 && T_arr[ws + j - 1] == T_arr[ws + j] && D_arr[ws + j - 1] == D_arr[ws + j])
             {
                 continue;
             }
@@ -356,17 +348,17 @@ public:
             uniqs.reserve(j - i);
             for (int k = i; k < j; ++k)
             {
-                if ((*T_arr_ptr)[ws + k] == 0)
+                if (T_arr[ws + k] == 0)
                 {
                     nones += 1;
                 }
                 else
                 {
-                    uniqs.emplace_back(pair((*T_arr_ptr)[ws + k], (*D_arr_ptr)[ws + k]));
+                    uniqs.emplace_back(pair(T_arr[ws + k], D_arr[ws + k]));
                 }
             }
             sort(uniqs.begin(), uniqs.end());
-            counts += id_to_count.at(ws) * (nones + (unique(uniqs.begin(), uniqs.end()) - uniqs.begin()) - 1);
+            counts += id_to_count[ws] * (nones + (unique(uniqs.begin(), uniqs.end()) - uniqs.begin()) - 1);
             prev_end = ws + j;
         }
         return counts;
@@ -375,34 +367,26 @@ public:
     /**
      * @brief Change graph to reflect new state
      *
-     * @param items Substring Positions to cover with rank_idx
-     * @param T_arr_ptr Array to track assigned tokens
-     * @param D_arr_ptr Array to track duplicates
-     * @param to_visit_ptr Array to track duplicates
+     * @param substring of interest (usually a decided token)
      * @param rank_idx Assigning elements to tokens with rank
      */
-    void alter_graph(
-        const vector<SubstringPos> &items,
-        vector<int unsigned> *T_arr_ptr,
-        vector<int unsigned> *D_arr_ptr,
-        vector<bool> *to_visit_ptr,
-        const int &rank_idx)
+    void alter_graph(const string &substring, const int rank_idx)
     {
 
         unsigned long prev_w_start = UINT64_MAX;
         unsigned int d_counter = 0;
-        for (const auto &p : items)
+        for (const auto &p : substring_to_positions[substring])
         {
             const long unsigned ws = p.arr_start;
             const long unsigned we = p.arr_end;
             const int i = p.substr_start;
             const int j = p.substr_end;
 
-            if (i > 0 && (*T_arr_ptr)[ws + i - 1] != 0 && (*T_arr_ptr)[ws + i - 1] == (*T_arr_ptr)[ws + i] && (*D_arr_ptr)[ws + i - 1] == (*D_arr_ptr)[ws + i])
+            if (i > 0 && T_arr[ws + i - 1] != 0 && T_arr[ws + i - 1] == T_arr[ws + i] && D_arr[ws + i - 1] == D_arr[ws + i])
             {
                 continue;
             }
-            if (ws + j < we && (*T_arr_ptr)[ws + j] != 0 && (*T_arr_ptr)[ws + j - 1] == (*T_arr_ptr)[ws + j] && (*D_arr_ptr)[ws + j - 1] == (*D_arr_ptr)[ws + j])
+            if (ws + j < we && T_arr[ws + j] != 0 && T_arr[ws + j - 1] == T_arr[ws + j] && D_arr[ws + j - 1] == D_arr[ws + j])
             {
                 continue;
             }
@@ -411,27 +395,30 @@ public:
                 d_counter = 0;
 
                 for_each(
-                    execution::par,
-                    word_to_substrings.at(ws).cbegin(),
-                    word_to_substrings.at(ws).cend(),
+                    execution::par_unseq,
+                    word_to_substrings[ws].cbegin(),
+                    word_to_substrings[ws].cend(),
                     [this](const unsigned long substr_idx)
                     {
                         to_visit_arr[substr_idx] = true;
                     });
             }
-            if (ws == prev_w_start)
+            else
             {
                 d_counter += 1;
             }
             for (long unsigned k = ws + i; k < ws + j; ++k)
             {
-                (*T_arr_ptr)[k] = rank_idx;
-                (*D_arr_ptr)[k] = d_counter;
+                T_arr[k] = rank_idx;
+                D_arr[k] = d_counter;
             }
             prev_w_start = ws;
         }
     }
 
+    /**
+     * @return convert selected tokens from c++ strings to py::bytes
+     */
     vector<py::bytes> get_ranks()
     {
         vector<py::bytes> pybytes_ranks(0);
@@ -443,6 +430,9 @@ public:
         return pybytes_ranks;
     }
 
+    /**
+     * @brief pretty print output log
+     */
     static void print_step(
         const unsigned int rank,
         const string &token,
@@ -472,12 +462,8 @@ public:
             unsigned long score = 0;
             if (substring_to_index.find(token) != substring_to_index.end())
             {
-                score = calculate_score(
-                    substring_to_positions[token],
-                    &T_arr, &D_arr, id_to_count);
-                alter_graph(
-                    substring_to_positions[token],
-                    &T_arr, &D_arr, &to_visit_arr, rank_idx);
+                score = calculate_score(token);
+                alter_graph(token, rank_idx);
                 to_visit_arr[substring_to_index[token]] = false;
                 results.erase(token);
             }
@@ -524,9 +510,7 @@ public:
                 {
                     token_score_pairs[i] = pair(
                         substrings[i],
-                        calculate_score(substring_to_positions[substrings[i]], &T_arr, &D_arr, id_to_count)
-                        // calculate_score(substrings[i]));
-                    );
+                        calculate_score(substrings[i]));
                 }
             });
         return token_score_pairs;
@@ -575,8 +559,7 @@ public:
 
             auto stop = chrono::high_resolution_clock::now();
             auto duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
-            alter_graph(substring_to_positions[best.first],
-                        &T_arr, &D_arr, &to_visit_arr, rank_idx);
+            alter_graph(best.first, rank_idx);
 
             stop = chrono::high_resolution_clock::now();
             auto duration2 = chrono::duration_cast<chrono::milliseconds>(stop - start);
