@@ -40,7 +40,7 @@ setup(
     license="MIT",
     setup_requires=["pybind11", "tbb-devel", "transformers>=4.4"],
     url="https://github.com/PreferredAI/pcatt/",
-    download_url="https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14-beta6.tar.gz",
+    download_url="https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14-beta7.tar.gz",
     ext_modules=modules,
     long_description=long_description,
     long_description_content_type="text/markdown",
