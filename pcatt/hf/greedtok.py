@@ -123,6 +123,7 @@ class GreedTok(PreTrainedTokenizer):
         for special_token in self.special_tokens:
             if special_token not in self.ranked_tokens:
                 raise ValueError(f"{special_token} not included in ranked_tokens.")
+        self.add_special_tokens(special_tokens_map)
         self.encoder = build_greedy_encoder(self.ranked_tokens, special_tokens_map)
 
         self.final_tokens = [
@@ -130,13 +131,12 @@ class GreedTok(PreTrainedTokenizer):
         ]
         self.final_tokens_map = {k: i for i, k in enumerate(self.final_tokens)}
         self.final_ids_map = {i: k for k, i in self.final_tokens_map.items()}
-        self.special_token_ids = set(
-            [self.final_tokens_map[v] for v in self.special_tokens]
-        )
-        self.add_special_tokens(special_tokens_map)
         self.pattern = kwargs.get(
             "pattern",
             r"""'s|'t|'re|'ve|'m|'ll|'d| ?[\p{L}]+| ?[\p{N}]+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
+        )
+        self.special_token_ids = set(
+            [self.final_tokens_map[v] for v in self.special_tokens]
         )
         self.pat = regex.compile(self.pattern)
 
