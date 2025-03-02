@@ -103,6 +103,11 @@ class GreedTok(PreTrainedTokenizer):
         # ranked_tokens should include special tokens
         # e.g. named_special_tokens_map = {'cls_token' : "<CLS>"}
 
+        self.pattern = kwargs.get(
+            "pattern",
+            r"""'s|'t|'re|'ve|'m|'ll|'d| ?[\p{L}]+| ?[\p{N}]+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
+        )
+        self.pat = regex.compile(self.pattern)
         self._in_target_context_manager = False
         special_tokens_map = {} if special_tokens_map == None else special_tokens_map
         self.final_tokens_map = {}
@@ -124,21 +129,28 @@ class GreedTok(PreTrainedTokenizer):
             if special_token not in self.ranked_tokens:
                 raise ValueError(f"{special_token} not included in ranked_tokens.")
         self.add_special_tokens(special_tokens_map)
+        
         self.encoder = build_greedy_encoder(self.ranked_tokens, special_tokens_map)
-
         self.final_tokens = [
             self.encoder.get_rule(i) for i in range(self.encoder.get_rules_size())
         ]
         self.final_tokens_map = {k: i for i, k in enumerate(self.final_tokens)}
         self.final_ids_map = {i: k for k, i in self.final_tokens_map.items()}
-        self.pattern = kwargs.get(
-            "pattern",
-            r"""'s|'t|'re|'ve|'m|'ll|'d| ?[\p{L}]+| ?[\p{N}]+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
-        )
+
+        # FIX special tokens out of order (credit: Shawn Tan)
+        new_pairs = []
+        for idx in list(self._added_tokens_decoder.keys()):
+            token = self._added_tokens_decoder[idx].content
+            new_pairs.append((self.final_tokens_map[token.encode("utf-8")], self._added_tokens_decoder[idx]))
+            del self._added_tokens_decoder[idx]
+        for idx, token_obj in new_pairs:
+            self._added_tokens_decoder[idx] = token_obj
+            self._added_tokens_encoder[token_obj.content] = self.final_tokens_map[token_obj.content.encode('utf-8')]
+            self._added_tokens_encoder[token_obj.content.encode("utf-8")] = idx
+        
         self.special_token_ids = set(
             [self.final_tokens_map[v] for v in self.special_tokens]
         )
-        self.pat = regex.compile(self.pattern)
 
     def __len__(self) -> int:
         return len(self.final_tokens)
