@@ -154,6 +154,13 @@ class GreedTok(PreTrainedTokenizer):
 
     def __len__(self) -> int:
         return len(self.final_tokens)
+    
+    @property
+    def vocab_size(self) -> int:
+        """
+        `int`: Unlike other models, every token is special/non-special
+        """
+        raise len(self.final_tokens)
 
     def get_added_vocab(self):
         return self.final_tokens
@@ -246,7 +253,8 @@ class GreedTok(PreTrainedTokenizer):
         else:
             config_tokenizer_class = None
             init_kwargs = init_configuration
-
+            
+        init_kwargs.update(kwargs)
         ranked_tokens = []
         added_tokens_file = resolved_vocab_files.pop("added_tokens_file", None)
         if added_tokens_file is not None:
@@ -458,6 +466,7 @@ class GreedTok(PreTrainedTokenizer):
         truncation: Union[bool, str, TruncationStrategy] = None,
         max_length: Optional[int] = None,
         stride: int = 0,
+        padding_side: Optional[bool] = None,
         return_tensors: Optional[Union[str, TensorType]] = None,
         **kwargs,
     ) -> List[int]:
@@ -478,6 +487,7 @@ class GreedTok(PreTrainedTokenizer):
         Returns:
             `List[int]`, `torch.Tensor`, `tf.Tensor` or `np.ndarray`: The tokenized ids of the text.
         """
+        
         encoded_inputs = self._call_one(
             text,
             text_pair,
@@ -487,28 +497,20 @@ class GreedTok(PreTrainedTokenizer):
             max_length=max_length,
             stride=stride,
             is_split_into_words=not isinstance(text, str),
-            pad_to_multiple_of=1,
-            return_attention_mask=False,
-            return_overflowing_tokens=False,
-            return_special_tokens_mask=False,
-            return_token_type_ids=False,
+            padding_side = padding_side,
             return_tensors=return_tensors,
             **kwargs,
         )
 
         return encoded_inputs["input_ids"][0]
-
-    def _get_padding_truncation_strategies(
-        self,
-        padding=False,
-        truncation=None,
-        max_length=None,
-        pad_to_multiple_of=None,
-        verbose=True,
-        **kwargs,
-    ):
-        raise NotImplementedError("Implemented in C++ backend")
-
+    
+    def _init_set(self, key, current_value, value_if_key_not_exist):
+        if current_value != None:
+            return current_value
+        elif key in self.init_kwargs:
+            return self.init_kwargs[key]
+        return value_if_key_not_exist
+    
     def _call_one(
         self,
         text: Union[
@@ -519,18 +521,18 @@ class GreedTok(PreTrainedTokenizer):
                 TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]
             ]
         ] = None,
-        add_special_tokens: bool = True,
         padding: Union[bool, str, PaddingStrategy] = False,
-        truncation: Union[bool, str, TruncationStrategy] = False,
-        max_length: Optional[int] = 65535,
+        truncation: Union[bool, str, TruncationStrategy] = None,
+        max_length: Optional[int] = None,
         stride: int = 0,
         is_split_into_words: bool = False,
-        pad_to_multiple_of: Optional[int] = 1,
-        return_tensors: Optional[Union[str, TensorType]] = False,
-        return_token_type_ids: Optional[bool] = False,
-        return_attention_mask: Optional[bool] = False,
-        return_overflowing_tokens: bool = False,
-        return_special_tokens_mask: bool = False,
+        pad_to_multiple_of: Optional[int] = None,
+        padding_side: Optional[bool] = None,
+        return_tensors: Optional[Union[str, TensorType]] = None,
+        return_token_type_ids: Optional[bool] = None,
+        return_attention_mask: Optional[bool] = None,
+        return_overflowing_tokens: Optional[bool] = None,
+        return_special_tokens_mask: Optional[bool] = None,
         return_offsets_mapping: bool = False,
         return_length: bool = False,
         verbose: bool = True,
@@ -593,12 +595,23 @@ class GreedTok(PreTrainedTokenizer):
                 f"batch length of `text`: {len(text)} does not match batch length of `text_pair`:"
                 f" {len(text_pair)}."
             )
-
+            
+        padding = self._init_set("padding", padding, 'do_not_pad')
+        truncation = self._init_set("truncation", truncation, 'do_not_truncate')
+        max_length = min(self._init_set("max_length", max_length, 0), self._init_set("model_max_length", max_length, 0))
+        padding_strategy, truncation_strategy, max_length, _ = self._get_padding_truncation_strategies(
+            padding, truncation, max_length, pad_to_multiple_of, verbose=True, **kwargs)
+        padding_side = self.padding_side if padding_side == None else padding_side
+        return_token_type_ids =  self._init_set("return_token_type_ids", return_token_type_ids, False)
+        return_attention_mask = self._init_set("return_attention_mask", return_attention_mask, False)
+        return_overflowing_tokens = self._init_set("return_overflowing_tokens", return_overflowing_tokens, False)
+        return_special_tokens_mask =  self._init_set("return_special_tokens_mask", return_special_tokens_mask, False)
+        
         self.encoder.set_post_embedding_strategy(
             _enums["truncate_" + self.truncation_side],
-            _enums["do_not_truncate"] if not truncation else _enums[truncation],
-            _enums["pad_" + self.truncation_side],
-            _enums["do_not_pad"] if not padding else _enums[padding],
+            _enums["do_not_truncate"] if not truncation_strategy else _enums[truncation_strategy.value],
+            _enums["pad_" + padding_side],
+            _enums["do_not_pad"] if not padding_strategy else _enums[padding_strategy.value],
             0 if max_length == None else max_length,
             1 if pad_to_multiple_of == None else pad_to_multiple_of,
         )
@@ -669,11 +682,15 @@ class GreedTok(PreTrainedTokenizer):
                     stride=stride,
                     f=callback,
                 )
+                
+        if return_attention_mask and padding_strategy==PaddingStrategy.DO_NOT_PAD:
+            encoded_inputs["attention_mask"] = [[1 for _ in range(len(ei))]
+                                                for ei in encoded_inputs["input_ids"]]
 
         batch_outputs = BatchEncoding(
             encoded_inputs,
             tensor_type=return_tensors,
-            prepend_batch_axis=True,
+            prepend_batch_axis=False,
         )
 
         return batch_outputs

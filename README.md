@@ -24,8 +24,8 @@ For detailed logs, compare cpp_logs/{$data}/{$data}.log versus cpp_logs/{$data}/
 
 Install the beta version (for transformers >= 4):
 ```
-wget "https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14-beta7.zip"
-unzip v0.14-beta7.zip -d pcatt
+wget "https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14-beta8.zip"
+unzip v0.14-beta8.zip -d pcatt
 cd pcatt
 pip install -r requirements.txt
 pip install transformers

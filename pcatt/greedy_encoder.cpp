@@ -5,7 +5,6 @@
 namespace py = pybind11;
 #include <iostream>
 #include <chrono>
-#include <set>
 #include <algorithm>
 #include <string>
 #include <numeric>
@@ -241,7 +240,7 @@ class GreedyTokenizer
     vector<string> rules;
     TrieCache trie_cache;
     unsigned int max_token_size = 0;
-    unsigned int _max_length = UINT16_MAX;
+    unsigned long _max_length = UINT16_MAX;
     unsigned int _pad_to_multiple_of = 1;
     unordered_set<unsigned int> _special_token_ids;
     unordered_map<string, string> _special_tokens;
@@ -328,7 +327,7 @@ public:
         TruncationStrategy truncation_strategy = TruncationStrategy::DO_NOT_TRUNCATE,
         PaddingSide padding_side = PaddingSide::RIGHT,
         PaddingStrategy padding_strategy = PaddingStrategy::DO_NOT_PAD,
-        unsigned int max_length = UINT16_MAX,
+        unsigned long max_length = UINT16_MAX,
         unsigned int pad_to_multiple_of = 1)
     {
         _truncation_strategy = truncation_strategy;
