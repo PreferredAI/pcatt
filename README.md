@@ -7,12 +7,15 @@ Compared to the base implementation, beta6 has a considerable speedup! The key d
 
 <center>
 
-|Dataset| $k$ | #uniq words | #candidates | Previous (arXiv paper's) | Current (beta6) | improvement |
+|Dataset| $k$ | #uniq words | #candidates | Previous (arXiv paper's) | Current (>beta6) | improvement |
 | ------- | --- | -------: | -------: | -------: | -------: | :----: |
-| UN    |5K|105,505|884,630| ~140 seconds |  ~6 seconds  | x23 |
-| arXiv |5K|881,233|7,625,530| ~28 minutes | ~63 seconds | x26 |
-| Wiki  |10K|8,769,943|93,243,449| ~12.5 hours | ~11 minutes | x68 |
-| PubMed|10K|6,527,614|97,870,366| ~24.5 hours | ~11 minutes | x133|
+| UN           |5K |105,505  |884,630  | ~140 seconds|  ~6 seconds | x23 |
+| arXiv        |5K |881,233  |7,625,530|  ~28 minutes| ~63 seconds | x26 |
+| Wiki         |10K|8,769,943|93,243,449| ~12.5 hours| ~11 minutes | x68 |
+| PubMed       |10K|6,527,614|97,870,366| ~24.5 hours| ~11 minutes | x133|
+| Wiki-chinese |10K|7,035,544|69,728,860|~12.75 hours| ~8.5 minutes| x90 |
+| Wiki-japanese|10K|2,737,555|60,410,961| ~10.5 hours| ~8.5 minutes| x74 |
+| Wiki-korean  |10K|5,459,833|130,927,124| ~26 hours | ~18 minutes | x86 |
 
 </center>
 
