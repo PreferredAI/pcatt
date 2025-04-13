@@ -129,7 +129,7 @@ class GreedTok(PreTrainedTokenizer):
             if special_token not in self.ranked_tokens:
                 raise ValueError(f"{special_token} not included in ranked_tokens.")
         self.add_special_tokens(special_tokens_map)
-        
+
         self.encoder = build_greedy_encoder(self.ranked_tokens, special_tokens_map)
         self.final_tokens = [
             self.encoder.get_rule(i) for i in range(self.encoder.get_rules_size())
@@ -141,20 +141,27 @@ class GreedTok(PreTrainedTokenizer):
         new_pairs = []
         for idx in list(self._added_tokens_decoder.keys()):
             token = self._added_tokens_decoder[idx].content
-            new_pairs.append((self.final_tokens_map[token.encode("utf-8")], self._added_tokens_decoder[idx]))
+            new_pairs.append(
+                (
+                    self.final_tokens_map[token.encode("utf-8")],
+                    self._added_tokens_decoder[idx],
+                )
+            )
             del self._added_tokens_decoder[idx]
         for idx, token_obj in new_pairs:
             self._added_tokens_decoder[idx] = token_obj
-            self._added_tokens_encoder[token_obj.content] = self.final_tokens_map[token_obj.content.encode('utf-8')]
+            self._added_tokens_encoder[token_obj.content] = self.final_tokens_map[
+                token_obj.content.encode("utf-8")
+            ]
             self._added_tokens_encoder[token_obj.content.encode("utf-8")] = idx
-        
+
         self.special_token_ids = set(
             [self.final_tokens_map[v] for v in self.special_tokens]
         )
 
     def __len__(self) -> int:
         return len(self.final_tokens)
-    
+
     @property
     def vocab_size(self) -> int:
         """
@@ -253,7 +260,7 @@ class GreedTok(PreTrainedTokenizer):
         else:
             config_tokenizer_class = None
             init_kwargs = init_configuration
-            
+
         init_kwargs.update(kwargs)
         ranked_tokens = []
         added_tokens_file = resolved_vocab_files.pop("added_tokens_file", None)
@@ -449,10 +456,10 @@ class GreedTok(PreTrainedTokenizer):
             text, pair, add_special_tokens=add_special_tokens, **kwargs
         )
         if add_special_tokens:
-            return [self.final_tokens_map[e] for e in encoding]
+            return [self.final_ids_map[e] for e in encoding]
         else:
             return [
-                self.final_tokens_map[e]
+                self.final_ids_map[e]
                 for e in encoding
                 if e not in self.special_token_ids
             ]
@@ -487,7 +494,7 @@ class GreedTok(PreTrainedTokenizer):
         Returns:
             `List[int]`, `torch.Tensor`, `tf.Tensor` or `np.ndarray`: The tokenized ids of the text.
         """
-        
+
         encoded_inputs = self._call_one(
             text,
             text_pair,
@@ -497,20 +504,20 @@ class GreedTok(PreTrainedTokenizer):
             max_length=max_length,
             stride=stride,
             is_split_into_words=not isinstance(text, str),
-            padding_side = padding_side,
+            padding_side=padding_side,
             return_tensors=return_tensors,
             **kwargs,
         )
 
         return encoded_inputs["input_ids"][0]
-    
+
     def _init_set(self, key, current_value, value_if_key_not_exist):
         if current_value != None:
             return current_value
         elif key in self.init_kwargs:
             return self.init_kwargs[key]
         return value_if_key_not_exist
-    
+
     def _call_one(
         self,
         text: Union[
@@ -595,23 +602,50 @@ class GreedTok(PreTrainedTokenizer):
                 f"batch length of `text`: {len(text)} does not match batch length of `text_pair`:"
                 f" {len(text_pair)}."
             )
-            
-        padding = self._init_set("padding", padding, 'do_not_pad')
-        truncation = self._init_set("truncation", truncation, 'do_not_truncate')
-        max_length = min(self._init_set("max_length", max_length, 0), self._init_set("model_max_length", max_length, 0))
-        padding_strategy, truncation_strategy, max_length, _ = self._get_padding_truncation_strategies(
-            padding, truncation, max_length, pad_to_multiple_of, verbose=True, **kwargs)
+
+        padding = self._init_set("padding", padding, "do_not_pad")
+        truncation = self._init_set("truncation", truncation, "do_not_truncate")
+        max_length = min(
+            self._init_set("max_length", max_length, 0),
+            self._init_set("model_max_length", max_length, 0),
+        )
+        padding_strategy, truncation_strategy, max_length, _ = (
+            self._get_padding_truncation_strategies(
+                padding,
+                truncation,
+                max_length,
+                pad_to_multiple_of,
+                verbose=True,
+                **kwargs,
+            )
+        )
         padding_side = self.padding_side if padding_side == None else padding_side
-        return_token_type_ids =  self._init_set("return_token_type_ids", return_token_type_ids, False)
-        return_attention_mask = self._init_set("return_attention_mask", return_attention_mask, False)
-        return_overflowing_tokens = self._init_set("return_overflowing_tokens", return_overflowing_tokens, False)
-        return_special_tokens_mask =  self._init_set("return_special_tokens_mask", return_special_tokens_mask, False)
-        
+        return_token_type_ids = self._init_set(
+            "return_token_type_ids", return_token_type_ids, False
+        )
+        return_attention_mask = self._init_set(
+            "return_attention_mask", return_attention_mask, False
+        )
+        return_overflowing_tokens = self._init_set(
+            "return_overflowing_tokens", return_overflowing_tokens, False
+        )
+        return_special_tokens_mask = self._init_set(
+            "return_special_tokens_mask", return_special_tokens_mask, False
+        )
+
         self.encoder.set_post_embedding_strategy(
             _enums["truncate_" + self.truncation_side],
-            _enums["do_not_truncate"] if not truncation_strategy else _enums[truncation_strategy.value],
+            (
+                _enums["do_not_truncate"]
+                if not truncation_strategy
+                else _enums[truncation_strategy.value]
+            ),
             _enums["pad_" + padding_side],
-            _enums["do_not_pad"] if not padding_strategy else _enums[padding_strategy.value],
+            (
+                _enums["do_not_pad"]
+                if not padding_strategy
+                else _enums[padding_strategy.value]
+            ),
             0 if max_length == None else max_length,
             1 if pad_to_multiple_of == None else pad_to_multiple_of,
         )
@@ -682,10 +716,11 @@ class GreedTok(PreTrainedTokenizer):
                     stride=stride,
                     f=callback,
                 )
-                
-        if return_attention_mask and padding_strategy==PaddingStrategy.DO_NOT_PAD:
-            encoded_inputs["attention_mask"] = [[1 for _ in range(len(ei))]
-                                                for ei in encoded_inputs["input_ids"]]
+
+        if return_attention_mask and padding_strategy == PaddingStrategy.DO_NOT_PAD:
+            encoded_inputs["attention_mask"] = [
+                [1 for _ in range(len(ei))] for ei in encoded_inputs["input_ids"]
+            ]
 
         batch_outputs = BatchEncoding(
             encoded_inputs,
@@ -841,18 +876,18 @@ class GreedTok(PreTrainedTokenizer):
                 "utf-8", errors="backslashreplace"
             )
         else:
-            output = self.encoder.decode(
-                token_ids, 
-                skip_special_tokens).decode(
-                    "utf-8", 
-                    errors="backslashreplace")
+            output = self.encoder.decode(token_ids, skip_special_tokens).decode(
+                "utf-8", errors="backslashreplace"
+            )
             if clean_up_tokenization_spaces:
                 output = self.clean_up_tokenization(output)
             return output
-        
+
     def batch_decode(
         self,
-        sequences: Union[List[int], List[List[int]], "np.ndarray", "torch.Tensor", "tf.Tensor"],
+        sequences: Union[
+            List[int], List[List[int]], "np.ndarray", "torch.Tensor", "tf.Tensor"
+        ],
         skip_special_tokens: bool = False,
         clean_up_tokenization_spaces: bool = None,
         **kwargs,
@@ -877,9 +912,13 @@ class GreedTok(PreTrainedTokenizer):
         if isinstance(sequences[0], int):
             sequences = [sequences]
         return [
-                self.clean_up_tokenization(seq.decode("utf-8", errors="backslashreplace")) 
+            (
+                self.clean_up_tokenization(
+                    seq.decode("utf-8", errors="backslashreplace")
+                )
                 if clean_up_tokenization_spaces
                 else seq.decode("utf-8", errors="backslashreplace")
+            )
             for seq in self.encoder.batch_decode(sequences, skip_special_tokens)
         ]
 
@@ -887,8 +926,6 @@ class GreedTok(PreTrainedTokenizer):
         self,
         text_iterator,
         vocab_size,
-        length=None,
-        new_special_tokens=None,
         special_tokens_map=None,
         **kwargs,
     ):
@@ -902,10 +939,6 @@ class GreedTok(PreTrainedTokenizer):
                 if you have everything in memory.
             vocab_size (`int`):
                 The size of the vocabulary you want for your tokenizer.
-            length (`int`, *optional*):
-                The total number of sequences in the iterator. This is used to provide meaningful progress tracking
-            new_special_tokens (list of `str` or `AddedToken`, *optional*):
-                A list of new special tokens to add to the tokenizer you are training.
             special_tokens_map (`Dict[str, str]`, *optional*):
                 If you want to rename some of the special tokens this tokenizer uses, pass along a mapping old special
                 token name to new special token name in this argument.
@@ -919,7 +952,9 @@ class GreedTok(PreTrainedTokenizer):
         """
         from ..pco_tokenizer import build as build_pco
 
-        self.tokenizer = build_pco()
+        shortlist_size = kwargs.get("shortlist_size", 100)
+        verbose = kwargs.get("verbose", True)
+        self.tokenizer = build_pco({}, set(), shortlist_size, verbose)
 
         max_token_length = kwargs.get("max_token_length", 100)
         min_word_count = kwargs.get("min_word_count", 1)
@@ -981,7 +1016,11 @@ class GreedTok(PreTrainedTokenizer):
         """
         from ..pco_tokenizer import build as build_pco
 
-        self.tokenizer = build_pco(word_counts)
+        shortlist_size = kwargs.get("shortlist_size", 100)
+        verbose = kwargs.get("verbose", True)
+        self.tokenizer = build_pco(word_counts, set(), shortlist_size, verbose)
+        shortlist_size = kwargs.get("shortlist_size", 100)
+        verbose = kwargs.get("verbose", True)
         special_tokens_map = {} if special_tokens_map == None else special_tokens_map
         self.tokenizer.initialize_graph(max_token_length, min_word_count)
         special_tokens_list = list(special_tokens_map.values())

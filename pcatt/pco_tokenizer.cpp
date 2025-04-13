@@ -38,10 +38,10 @@ struct SubstringPos
     /**
      * @brief Construct a new Substring Pos object, meant for internal use
      *
-     * @param a index of start of word in array
-     * @param b index of end of word in array
-     * @param c start of substring in word
-     * @param d end of substring in word
+     * @param arr_start index of start of word in array
+     * @param arr_end index of end of word in array
+     * @param substr_start start of substring in word
+     * @param substr_end end of substring in word
      */
     SubstringPos(
         unsigned long arr_start,
@@ -152,6 +152,7 @@ class GreedyPCOTokenizer
 {
 
 public:
+    bool verbose;
     unsigned long singleton_count = 0;
     ResultsCache results;
     vector<string> ranks;
@@ -176,14 +177,21 @@ public:
     GreedyPCOTokenizer(
         unordered_map<string, unsigned long> word_counts = {},
         unordered_set<string> candidate_tokens = {},
-        unsigned long shortlist_size = 100)
-        : results(ResultsCache(shortlist_size)),
+        unsigned long shortlist_size = 100,
+        bool verbose = true)
+        : verbose(verbose),
+          results(ResultsCache(shortlist_size)),
           candidate_tokens(candidate_tokens),
           word_counts(word_counts)
     {
     }
 
     virtual ~GreedyPCOTokenizer() {}
+
+    void set_verbosity(bool to)
+    {
+        verbose = to;
+    }
 
     void build_counter_from_text(const vector<vector<string>> &texts)
     {
@@ -416,6 +424,17 @@ public:
         }
     }
 
+    vector<pair<py::bytes, unsigned long>> get_counts()
+    {
+        vector<pair<py::bytes, unsigned long>> r = {};
+        r.reserve(word_counts.size());
+        for (const auto &w : word_counts)
+        {
+            r.push_back(pair(py::bytes(w.first), w.second));
+        }
+        return r;
+    }
+
     /**
      * @return convert selected tokens from c++ strings to py::bytes
      */
@@ -468,7 +487,10 @@ public:
                 results.erase(token);
             }
             scores.emplace_back(score);
-            print_step(rank_idx, token, score);
+            if (verbose)
+            {
+                print_step(rank_idx, token, score);
+            }
         }
         return pair(get_ranks(), scores);
     }
@@ -563,8 +585,11 @@ public:
 
             stop = chrono::high_resolution_clock::now();
             auto duration2 = chrono::duration_cast<chrono::milliseconds>(stop - start);
-            print_step(rank_idx, best.first, best.second,
-                       " | " + to_string(duration.count()) + " ms | " + to_string(duration2.count()) + " ms | num. checks: " + to_string(num_checked));
+            if (verbose)
+            {
+                print_step(rank_idx, best.first, best.second,
+                           " | " + to_string(duration.count()) + " ms | " + to_string(duration2.count()) + " ms | num. checks: " + to_string(num_checked));
+            }
             start = chrono::high_resolution_clock::now();
             num_checked = 0;
         }
@@ -586,15 +611,18 @@ public:
     using GreedyPCOTokenizer::initialize_graph;
     using GreedyPCOTokenizer::initialize_heap;
     using GreedyPCOTokenizer::print_step;
+    using GreedyPCOTokenizer::set_verbosity;
     using GreedyPCOTokenizer::solve;
     using GreedyPCOTokenizer::solve_to_step;
 };
 
 GreedyPCOTokenizer *build(
     unordered_map<string, unsigned long> word_counts = {},
-    unordered_set<string> candidate_tokens = {})
+    unordered_set<string> candidate_tokens = {},
+    unsigned long shortlist_size = 100,
+    bool verbose = true)
 {
-    return new GreedyPCOTokenizer(word_counts, candidate_tokens);
+    return new GreedyPCOTokenizer(word_counts, candidate_tokens, shortlist_size, verbose);
 }
 
 PYBIND11_MODULE(pco_tokenizer, var)
@@ -611,6 +639,7 @@ PYBIND11_MODULE(pco_tokenizer, var)
                     candidate_tokens);
             }))
         .def("get_ranks", &GreedyPCOTokenizer::get_ranks)
+        .def("get_counts", &GreedyPCOTokenizer::get_counts)
         .def("solve_to_step", &GreedyPCOTokenizer::solve_to_step)
         .def("calculate_score", &GreedyPCOTokenizer::calculate_score)
         .def("initialize_graph", &GreedyPCOTokenizer::initialize_graph)
@@ -618,10 +647,13 @@ PYBIND11_MODULE(pco_tokenizer, var)
         .def("custom_steps", &GreedyPCOTokenizer::custom_steps)
         .def("build_counter_from_text", &GreedyPCOTokenizer::build_counter_from_text)
         .def("get_singleton_counts", &GreedyPCOTokenizer::get_singleton_counts)
-        .def("get_candidate_token_size", &GreedyPCOTokenizer::get_candidate_token_size);
+        .def("get_candidate_token_size", &GreedyPCOTokenizer::get_candidate_token_size)
+        .def("set_verbosity", &GreedyPCOTokenizer::set_verbosity);
     var.def("build",
             &build,
             py::arg("word_counts") = unordered_map<string, unsigned long>(),
             py::arg("candidate_tokens") = unordered_set<string>(),
+            py::arg("shortlist_size") = 100,
+            py::arg("verbose") = true,
             "Factory function for greedy PCO tokenizer, use this to create your token sets.");
 }
