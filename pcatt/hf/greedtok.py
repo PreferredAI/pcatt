@@ -167,7 +167,7 @@ class GreedTok(PreTrainedTokenizer):
         """
         `int`: Unlike other models, every token is special/non-special
         """
-        raise len(self.final_tokens)
+        return len(self.final_tokens)
 
     def get_added_vocab(self):
         return self.final_tokens
