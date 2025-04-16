@@ -778,24 +778,6 @@ class GreedTok(PreTrainedTokenizer):
     ) -> BatchEncoding:
         raise NotImplementedError
 
-    def pad(
-        self,
-        encoded_inputs: Union[
-            BatchEncoding,
-            List[BatchEncoding],
-            Dict[str, EncodedInput],
-            Dict[str, List[EncodedInput]],
-            List[Dict[str, EncodedInput]],
-        ],
-        padding: Union[bool, str, PaddingStrategy] = True,
-        max_length: Optional[int] = None,
-        pad_to_multiple_of: Optional[int] = None,
-        return_attention_mask: Optional[bool] = None,
-        return_tensors: Optional[Union[str, TensorType]] = None,
-        verbose: bool = True,
-    ) -> BatchEncoding:
-        raise NotImplementedError("Implemented in C++ backend")
-
     def create_token_type_ids_from_sequences(
         self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
     ) -> List[int]:
@@ -837,16 +819,6 @@ class GreedTok(PreTrainedTokenizer):
         truncation_strategy: Union[str, TruncationStrategy] = "longest_first",
         stride: int = 0,
     ) -> Tuple[List[int], List[int], List[int]]:
-        raise NotImplementedError("Implemented in C++ backend")
-
-    def _pad(
-        self,
-        encoded_inputs: Union[Dict[str, EncodedInput], BatchEncoding],
-        max_length: Optional[int] = None,
-        padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
-        pad_to_multiple_of: Optional[int] = None,
-        return_attention_mask: Optional[bool] = None,
-    ) -> dict:
         raise NotImplementedError("Implemented in C++ backend")
 
     def convert_tokens_to_string(self, tokens: List[str]) -> str:
