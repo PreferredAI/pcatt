@@ -730,64 +730,6 @@ class GreedTok(PreTrainedTokenizer):
 
         return batch_outputs
 
-    def encode_plus(
-        self,
-        text: Union[TextInput, PreTokenizedInput, EncodedInput],
-        text_pair: Optional[Union[TextInput, PreTokenizedInput, EncodedInput]] = None,
-        add_special_tokens: bool = True,
-        padding: Union[bool, str, PaddingStrategy] = False,
-        truncation: Union[bool, str, TruncationStrategy] = None,
-        max_length: Optional[int] = None,
-        stride: int = 0,
-        is_split_into_words: bool = False,
-        pad_to_multiple_of: Optional[int] = None,
-        return_tensors: Optional[Union[str, TensorType]] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
-        return_overflowing_tokens: bool = False,
-        return_special_tokens_mask: bool = False,
-        return_offsets_mapping: bool = False,
-        return_length: bool = False,
-        verbose: bool = True,
-        **kwargs,
-    ) -> BatchEncoding:
-        raise NotImplementedError
-
-    def batch_encode_plus(
-        self,
-        batch_text_or_text_pairs: Union[
-            List[TextInput],
-            List[TextInputPair],
-            List[PreTokenizedInput],
-            List[PreTokenizedInputPair],
-            List[EncodedInput],
-            List[EncodedInputPair],
-        ],
-        padding: Union[bool, str, PaddingStrategy] = False,
-        truncation: Union[bool, str, TruncationStrategy] = None,
-        max_length: Optional[int] = None,
-        stride: int = 0,
-        is_split_into_words: bool = False,
-        pad_to_multiple_of: Optional[int] = None,
-        return_tensors: Optional[Union[str, TensorType]] = None,
-        return_token_type_ids: Optional[bool] = None,
-        return_attention_mask: Optional[bool] = None,
-        return_overflowing_tokens: bool = False,
-        return_special_tokens_mask: bool = False,
-        **kwargs,
-    ) -> BatchEncoding:
-        raise NotImplementedError
-
-    def create_token_type_ids_from_sequences(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
-    ) -> List[int]:
-        raise NotImplementedError("Implemented in C++ backend")
-
-    def build_inputs_with_special_tokens(
-        self, token_ids_0: List[int], token_ids_1: Optional[List[int]] = None
-    ) -> List[int]:
-        raise NotImplementedError("Implemented in C++ backend")
-
     def prepare_for_model(
         self,
         ids: List[int],
@@ -810,16 +752,6 @@ class GreedTok(PreTrainedTokenizer):
         **kwargs,
     ) -> BatchEncoding:
         NotImplementedError("Implemented in C++ backend")
-
-    def truncate_sequences(
-        self,
-        ids: List[int],
-        pair_ids: Optional[List[int]] = None,
-        num_tokens_to_remove: int = 0,
-        truncation_strategy: Union[str, TruncationStrategy] = "longest_first",
-        stride: int = 0,
-    ) -> Tuple[List[int], List[int], List[int]]:
-        raise NotImplementedError("Implemented in C++ backend")
 
     def convert_tokens_to_string(self, tokens: List[str]) -> str:
         """

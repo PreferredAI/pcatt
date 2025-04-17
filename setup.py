@@ -2,7 +2,7 @@ from sysconfig import get_path
 from setuptools import setup, Extension
 from pathlib import Path
 
-PATH_PREFIXES = [get_path(p) for p in ['data', 'platlib']]
+PATH_PREFIXES = [get_path(p) for p in ["data", "platlib"]]
 
 modules = []
 include_dirs = [
@@ -11,18 +11,18 @@ include_dirs = [
     for path in [
         f"{prefix}/include/",
         f"{prefix}/include/tbb",
-        f"{prefix}/pybind11/include"
+        f"{prefix}/pybind11/include",
     ]
 ]
 
-for code in ["greedy_builder", "greedy_encoder", "pco_tokenizer"]:
+for code in ["greedy_encoder", "pco_tokenizer"]:
     modules.append(
         Extension(
             f"pcatt.{code}",
             extra_compile_args=["-O3", "-std=c++23"],
-            define_macros=[("MAJOR_VERSION", "0"), ("MINOR_VERSION", "14-beta")],
+            define_macros=[("MAJOR_VERSION", "0"), ("MINOR_VERSION", "14")],
             include_dirs=include_dirs,
-            library_dirs=[f"{prefix}/lib/" for prefix in PATH_PREFIXES] ,
+            library_dirs=[f"{prefix}/lib/" for prefix in PATH_PREFIXES],
             libraries=["tbb"],
             sources=[f"pcatt/{code}.cpp"],
         )
@@ -33,7 +33,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="greedtok",
-    version="0.14-beta",
+    version="0.14",
     description="Partition Cover Approach to Tokenization",
     author="JP Lim",
     author_email="jiapeng.lim.2021@phdcs.smu.edu.sg",
