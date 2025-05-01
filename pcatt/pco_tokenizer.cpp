@@ -9,7 +9,6 @@ namespace py = pybind11;
 #include <numeric>
 #include <queue>
 #include <regex>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -154,6 +153,7 @@ class GreedyPCOTokenizer
 public:
     bool verbose;
     unsigned long singleton_count = 0;
+    unsigned long shortlist_size;
     ResultsCache results;
     vector<string> ranks;
     vector<unsigned int> T_arr;
@@ -180,6 +180,7 @@ public:
         unsigned long shortlist_size = 100,
         bool verbose = true)
         : verbose(verbose),
+          shortlist_size(shortlist_size),
           results(ResultsCache(shortlist_size)),
           candidate_tokens(candidate_tokens),
           word_counts(word_counts)
@@ -648,7 +649,46 @@ PYBIND11_MODULE(pco_tokenizer, var)
         .def("build_counter_from_text", &GreedyPCOTokenizer::build_counter_from_text)
         .def("get_singleton_counts", &GreedyPCOTokenizer::get_singleton_counts)
         .def("get_candidate_token_size", &GreedyPCOTokenizer::get_candidate_token_size)
-        .def("set_verbosity", &GreedyPCOTokenizer::set_verbosity);
+        .def("set_verbosity", &GreedyPCOTokenizer::set_verbosity)
+        .def(py::pickle(
+            [](const PyGreedyPCOTokenizer &gt) { 
+
+                vector<py::bytes> candidate_tokens {};
+                candidate_tokens.reserve(gt.candidate_tokens.size());
+                for (const string &s : gt.candidate_tokens) {
+                    candidate_tokens.emplace_back(py::bytes(s));
+                }
+
+                vector<pair<py::bytes,unsigned long>> word_counts {};
+                word_counts.reserve(gt.word_counts.size());
+                for (const auto &s : gt.word_counts) {
+                    word_counts.emplace_back(py::bytes(s.first), s.second);
+                }
+                return py::make_tuple(word_counts, candidate_tokens, gt.shortlist_size, gt.verbose);
+            },
+            [](py::tuple t) {
+                if (t.size() != 4)
+                    throw std::runtime_error("Invalid state!");
+                
+                py::dict d = t[0];
+                unordered_map<string, unsigned long> word_counts {};
+                for (pair<py::handle, py::handle> item : d) {
+                    word_counts[item.first.cast<string>()] = item.second.cast<unsigned long>();
+                }
+                py::list pylist = t[1];
+                unordered_set<string> candidate_tokens {};
+                for (py::handle item : pylist) {
+                    candidate_tokens.emplace(item.cast<string>());
+                }
+
+                GreedyPCOTokenizer gt(
+                    word_counts, 
+                    candidate_tokens,
+                    t[2].cast<unsigned long>(),
+                    t[3].cast<bool>()
+                );
+                return gt;
+            }));
     var.def("build",
             &build,
             py::arg("word_counts") = unordered_map<string, unsigned long>(),

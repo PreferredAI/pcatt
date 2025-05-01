@@ -233,6 +233,8 @@ enum class PaddingSide : char
     LEFT
 };
 
+
+
 class GreedyTokenizer
 {
     regex re;
@@ -243,7 +245,6 @@ class GreedyTokenizer
     unsigned long _max_length = UINT16_MAX;
     unsigned int _pad_to_multiple_of = 1;
     unordered_set<unsigned int> _special_token_ids;
-    unordered_map<string, string> _special_tokens;
     unordered_map<string, int unsigned> rules_cache;
     unordered_map<int unsigned, string> decode_cache;
     unordered_map<char, int unsigned> singleton_cache;
@@ -271,6 +272,10 @@ class GreedyTokenizer
     }
 
 public:
+
+    unordered_map<string, string> _special_tokens;
+    vector<string> _rules_input;
+    
     /**
      * @brief Construct a new Greedy Tokenizer object
      *
@@ -280,6 +285,7 @@ public:
         const vector<string> rules_input,
         const unordered_map<string, string> special_tokens)
     {
+        _rules_input = rules_input;
         trie_cache = TrieCache(rules_input);
         for (int unsigned i = 0; i < rules_input.size(); ++i)
         {
@@ -1176,6 +1182,8 @@ public:
     using GreedyTokenizer::truncate_pairs;
     using GreedyTokenizer::truncate_sequence;
     using GreedyTokenizer::truncate_sequence_get_overflow;
+    using GreedyTokenizer::_rules_input;
+    using GreedyTokenizer::_special_tokens;
 };
 
 GreedyTokenizer *build(
@@ -1235,7 +1243,36 @@ PYBIND11_MODULE(greedy_encoder, var)
         .def("tokenize_presplit", &GreedyTokenizer::tokenize_presplit)
         .def("get_special_token_ids", &GreedyTokenizer::get_special_token_ids)
         .def("truncate_sequence_get_overflow", &GreedyTokenizer::truncate_sequence_get_overflow)
-        .def("truncate_sequence", &GreedyTokenizer::truncate_sequence);
+        .def("truncate_sequence", &GreedyTokenizer::truncate_sequence)
+        .def(py::pickle(
+            [](const PyGreedyTokenizer &gt) { 
+
+                vector<py::bytes> tokens {};
+                tokens.reserve(gt._rules_input.size());
+                for (const string &s : gt._rules_input) {
+                    tokens.emplace_back(py::bytes(s));
+                }
+                return py::make_tuple(tokens, gt._special_tokens);
+
+            },
+            [](py::tuple t) {
+                if (t.size() != 2)
+                    throw std::runtime_error("Invalid state!");
+
+                py::dict d = t[1];
+                std::unordered_map<string, string> special_token_map;
+                for (pair<py::handle, py::handle> item : d) {
+                    special_token_map[item.first.cast<string>()] = item.second.cast<string>();
+                }
+
+                vector<string> tokens {};
+                for (py::handle item : t[0]) {
+                    tokens.push_back(item.cast<string>());
+                }
+
+                GreedyTokenizer gt(tokens, special_token_map);
+                return gt;
+            }));
     py::enum_<TruncationStrategy>(var, "TruncationStrategy")
         .value("only_first", TruncationStrategy::ONLY_FIRST)
         .value("only_second", TruncationStrategy::ONLY_SECOND)
