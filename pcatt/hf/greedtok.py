@@ -518,6 +518,15 @@ class GreedTok(PreTrainedTokenizer):
             return self.init_kwargs[key]
         return value_if_key_not_exist
 
+    def default_callback_pair(self, x1, x2):
+        return (
+            [*x1, self.final_tokens_map[b" "], *x2],
+            [0] * len(x1) + [1] * (len(x2) + 1),
+        )
+
+    def default_callback(self, x):
+        return x
+
     def _call_one(
         self,
         text: Union[
@@ -657,10 +666,7 @@ class GreedTok(PreTrainedTokenizer):
             # account for text pairs
             callback = kwargs.get(
                 "callback",
-                lambda x1, x2: (
-                    [*x1, self.final_tokens_map[b" "], *x2],
-                    [0] * len(x1) + [1] * (len(x2) + 1),
-                ),
+                self.default_callback_pair,
             )
             if is_split_into_words:
                 encoded_inputs = self.encoder.batch_encode_pairs_presplit(
@@ -689,7 +695,7 @@ class GreedTok(PreTrainedTokenizer):
                     f=callback,
                 )
         else:
-            callback = kwargs.get("callback", lambda x: x)
+            callback = kwargs.get("callback", self.default_callback)
             if is_split_into_words:
                 encoded_inputs = self.encoder.batch_encode_presplit(
                     texts=text,
