@@ -510,6 +510,55 @@ class GreedTok(PreTrainedTokenizer):
         )
 
         return encoded_inputs["input_ids"][0]
+    
+    def batch_encode(
+        self,
+        text: Union[TextInput, PreTokenizedInput],
+        text_pair: Optional[Union[TextInput, PreTokenizedInput]] = None,
+        add_special_tokens: bool = True,
+        padding: Union[bool, str, PaddingStrategy] = False,
+        truncation: Union[bool, str, TruncationStrategy] = None,
+        max_length: Optional[int] = None,
+        stride: int = 0,
+        padding_side: Optional[bool] = None,
+        return_tensors: Optional[Union[str, TensorType]] = None,
+        **kwargs,
+    ) -> List[List[int]]:
+        """
+        Converts a string to a sequence of ids (integer), using the tokenizer and vocabulary.
+
+        Same as doing `self.convert_tokens_to_ids(self.tokenize(text))`.
+
+        Args:
+            text (`str`, `List[str]` or `List[int]`):
+                The first sequence to be encoded. This can be a string, a list of strings (tokenized string using the
+                `tokenize` method) or a list of integers (tokenized string ids using the `convert_tokens_to_ids`
+                method).
+            text_pair (`str`, `List[str]` or `List[int]`, *optional*):
+                Optional second sequence to be encoded. This can be a string, a list of strings (tokenized string using
+                the `tokenize` method) or a list of integers (tokenized string ids using the `convert_tokens_to_ids`
+                method).
+        Returns:
+            `List[int]`, `torch.Tensor`, `tf.Tensor` or `np.ndarray`: The tokenized ids of the text.
+        """
+
+        encoded_inputs = self._call_one(
+            text,
+            text_pair,
+            add_special_tokens=add_special_tokens,
+            padding=padding,
+            truncation=truncation,
+            max_length=max_length,
+            stride=stride,
+            is_split_into_words=False,
+            padding_side=padding_side,
+            return_tensors=return_tensors,
+            **kwargs,
+        )
+
+        return encoded_inputs["input_ids"]
+    
+    
 
     def _init_set(self, key, current_value, value_if_key_not_exist):
         if current_value != None:
@@ -835,8 +884,8 @@ class GreedTok(PreTrainedTokenizer):
     def train_new_from_iterator(
         self,
         text_iterator,
-        vocab_size,
-        special_tokens_map=None,
+        vocab_size: int,
+        special_tokens_map: dict[str,str]|None =None,
         **kwargs,
     ):
         """
@@ -894,11 +943,11 @@ class GreedTok(PreTrainedTokenizer):
 
     def train_new_from_counts(
         self,
-        word_counts,
-        vocab_size,
-        max_token_length=None,
-        min_word_count=None,
-        special_tokens_map=None,
+        word_counts: dict[str, int],
+        vocab_size: int,
+        max_token_length: int = 20,
+        min_word_count: int = 0,
+        special_tokens_map: dict[str, str] | None = None,
         **kwargs,
     ):
         """

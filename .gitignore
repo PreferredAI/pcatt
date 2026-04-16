@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+#build
+.eggs/**
+build/**
+dist/**
+wheelhouse/**
+**/**.egg-info/**
+**.tar.gz
+main.py
+*.pyc

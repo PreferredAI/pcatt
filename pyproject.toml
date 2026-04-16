@@ -1,0 +1,34 @@
+[build-system]
+requires = [
+    "setuptools>=64",
+    "wheel",
+    "pybind11",
+    "tbb-devel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "greedtok"
+version = "0.15"
+description = "Partition Cover Approach to Tokenization"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "JP Lim", email = "jiapeng.lim.2021@phdcs.smu.edu.sg" }
+]
+requires-python = ">=3.8"
+
+dependencies = [
+    "transformers>=4.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/PreferredAI/pcatt/"
+Repository = "https://github.com/PreferredAI/pcatt/"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pcatt", "pcatt.*"]

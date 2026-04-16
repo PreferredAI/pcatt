@@ -28,10 +28,10 @@ For detailed logs, compare cpp_logs/{$data}/{$data}.log versus cpp_logs/{$data}/
 
 ###  Huggingface AutoTokenizer interface
 
-Install the v0.14.x version (for transformers >= 4):
+Install the v0.15 version (for transformers >= 4), for Linux-based:
 ```
-wget "https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.14.1.zip"
-unzip v0.14.1.zip -d pcatt
+wget "https://github.com/PreferredAI/pcatt/archive/refs/tags/v0.15.zip"
+unzip v0.15.zip -d pcatt
 cd pcatt
 pip install -r requirements.txt
 pip install .
