@@ -36,6 +36,7 @@ cd pcatt
 pip install -r requirements.txt
 pip install .
 ```
+or ```pip install greedtok```
 
 For "training" either:
 ```
